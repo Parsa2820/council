@@ -136,7 +136,7 @@ func TestParseTable(t *testing.T) {
 		{"unknown moderator", "defaults: {moderator: judge}\n", `defaults.moderator: unknown agent "judge"`},
 		{"builtin moderator", "defaults: {moderator: claude}\n", ""},
 		{"defined moderator", "defaults: {moderator: j}\nagents: {j: {command: judge}}\n", ""},
-		{"unknown harness", "agents: {a: {harness: chatgpt}}\n", `agent "a": unknown harness "chatgpt" (want one of antigravity, claude, codex, opencode or generic)`},
+		{"unknown harness", "agents: {a: {harness: chatgpt}}\n", `agent "a": unknown harness "chatgpt" (want one of antigravity, claude, codex, cursor, opencode, pi or generic)`},
 		{"removed gemini harness", "agents: {g: {harness: gemini}}\n", `agent "g": the gemini harness was removed in council v0.2.1 because Gemini CLI is deprecated; use ` + "`harness: antigravity`" + ` (Google's Antigravity CLI, agy) or ` + "`harness: generic`" + ` instead`},
 		{"removed gemini-cli alias", "agents: {g: {harness: Gemini-CLI, command: gemini}}\n", "Gemini CLI is deprecated"},
 		{"gemini by name in defaults", "defaults: {agents: [codex, gemini]}\nagents: {codex: {}}\n", ""},

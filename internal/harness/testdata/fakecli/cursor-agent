@@ -1,0 +1,58 @@
+#!/bin/sh
+# Fake Cursor CLI for tests. Mimics `cursor-agent -p --output-format json
+# --mode ask --trust` (prompt on stdin, one JSON result object on stdout as
+# in cursor-agent 2026.10.01), `cursor-agent models|status|login` and
+# `cursor-agent --version`.
+# Env: FAKE_MODE (ok|is_error|noauth|fail|malformed|empty|hang),
+#      FAKE_AUTH (ok|missing|badkey|offline|key: ok only if CURSOR_API_KEY=valid),
+#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD, FAKE_LOGIN_EXIT.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+esc=$(printf '\033')
+noauth="Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN."
+auth=${FAKE_AUTH:-ok}
+if [ "$auth" = key ]; then
+	if [ "${CURSOR_API_KEY:-}" = valid ]; then auth=ok; elif [ -n "${CURSOR_API_KEY:-}" ]; then auth=badkey; else auth=missing; fi
+fi
+case "${1:-}" in
+--version | -v) echo "2026.10.01-e373342"; exit 0 ;;
+models)
+	case "$auth" in
+	ok) # listing format not verified (needs an account); council only uses the exit code
+		printf 'Available models\n\nauto - Auto\nsonnet-4.5 - Claude 4.5 Sonnet\ngpt-5 - GPT-5\n' ;;
+	missing) echo "$noauth" >&2; exit 1 ;;
+	badkey) printf '%s[33m⚠ Warning: The provided API key is invalid.%s[0m\nThe API key was loaded from the CURSOR_API_KEY environment variable.\nPlease check you have the right key, create a new one, or authenticate without it.\n' "$esc" "$esc" >&2; exit 1 ;;
+	offline) echo "Error: getaddrinfo ENOTFOUND api2.cursor.sh" >&2; exit 1 ;;
+	esac
+	exit 0 ;;
+status | whoami) echo "Not logged in"; exit 0 ;; # the real one exits 0 even when signed out
+login) echo "fake cursor login: $*"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+esac
+print="" fmt=text mode="" trust=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-p | --print) print=1 ;;
+	--output-format) fmt=$2; shift ;;
+	--mode) mode=$2; shift ;;
+	--trust) trust=1 ;;
+	--model) shift ;;
+	-*) echo "error: unknown option '$1'" >&2; exit 1 ;;
+	*) echo "error: the prompt must come on stdin in tests, got argument $1" >&2; exit 1 ;;
+	esac
+	shift
+done
+[ -n "$print" ] || { echo "error: the interactive UI is not supported in tests" >&2; exit 1; }
+[ "$fmt" = json ] || { echo "error: expected --output-format json" >&2; exit 1; }
+[ "$mode" = ask ] || { echo "error: expected --mode ask" >&2; exit 1; }
+[ -n "$trust" ] || { printf '\n⚠ Workspace Trust Required\n\n  Pass --trust, --yolo, or -f to trust this directory.\n' >&2; exit 1; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+case "${FAKE_MODE:-ok}" in
+ok) printf '{"type":"result","subtype":"success","is_error":false,"duration_ms":1234,"duration_api_ms":1234,"result":"cursor read %s bytes","session_id":"c6b62c6f","request_id":"10e11780"}\n' "${#prompt}" ;;
+is_error) echo '{"type":"result","subtype":"error","is_error":true,"result":"usage limit reached","session_id":"c6b62c6f"}' ;;
+noauth) echo "Error: Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY environment variable." >&2; exit 1 ;;
+fail) echo "Error: model 'nope' is not available" >&2; exit 1 ;;
+malformed) echo 'Loading...'; echo '{"type":"result","res' ;;
+empty) echo '{"type":"result","subtype":"success","is_error":false,"result":""}' ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac

@@ -9,7 +9,7 @@ import (
 type Harness interface {
 	// Name is the agent name used in the chat (e.g. "claude" or "claude-opus").
 	Name() string
-	// Kind is the harness type (codex, claude, antigravity, opencode, generic, ...).
+	// Kind is the harness type (codex, claude, antigravity, opencode, cursor, pi, generic).
 	Kind() string
 	// Run sends prompt to the harness and returns its final answer text.
 	Run(ctx context.Context, prompt string) (string, error)

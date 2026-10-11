@@ -63,7 +63,8 @@ func New(name string, spec Spec) (*CommandHarness, error) {
 // Name returns the agent name this harness was created for.
 func (h *CommandHarness) Name() string { return h.name }
 
-// Kind returns the harness kind (codex, claude, antigravity, opencode or generic).
+// Kind returns the harness kind (codex, claude, antigravity, opencode, cursor,
+// pi or generic).
 func (h *CommandHarness) Kind() string { return h.spec.Kind }
 
 // Spec returns the resolved spec, with defaults filled in by New.

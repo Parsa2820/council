@@ -15,15 +15,20 @@ const (
 	KindClaude      = "claude"
 	KindAntigravity = "antigravity"
 	KindOpenCode    = "opencode"
+	KindCursor      = "cursor"
+	KindPi          = "pi"
 	KindGeneric     = "generic"
 )
 
 var kindAliases = map[string]string{
-	"agy":         KindAntigravity,
-	"claude-code": KindClaude,
-	"open-code":   KindOpenCode,
-	"openai":      KindCodex,
-	"custom":      KindGeneric,
+	"agy":             KindAntigravity,
+	"claude-code":     KindClaude,
+	"cursor-agent":    KindCursor,
+	"cursor-cli":      KindCursor,
+	"pi-coding-agent": KindPi,
+	"open-code":       KindOpenCode,
+	"openai":          KindCodex,
+	"custom":          KindGeneric,
 }
 
 // CanonicalKind resolves aliases such as "agy" -> "antigravity".
@@ -37,7 +42,7 @@ func CanonicalKind(k string) string {
 
 // BuiltinKinds lists the kinds with presets, sorted.
 func BuiltinKinds() []string {
-	ks := []string{KindCodex, KindClaude, KindAntigravity, KindOpenCode}
+	ks := []string{KindCodex, KindClaude, KindAntigravity, KindOpenCode, KindCursor, KindPi}
 	sort.Strings(ks)
 	return ks
 }
@@ -79,6 +84,31 @@ func BuiltinKinds() []string {
 //     in ~/.local/share/opencode/auth.json; `opencode auth list` lists them
 //     and provider env vars (it always exits 0, so its output is parsed).
 //     With no credentials OpenCode still works with its free Zen models.
+//   - Cursor CLI (`cursor-agent`, also installed as `agent`): -p/--print is
+//     the non-interactive mode; with no prompt argument and piped stdin it
+//     reads the whole of stdin as the prompt. --output-format json prints one
+//     {"type":"result","subtype":"success","is_error":false,"result":"..."}
+//     object on success; failures exit non-zero with a message and no JSON.
+//     --mode ask is the read-only Q&A mode (no edits; without --force print
+//     mode only proposes changes anyway). Headless runs refuse an untrusted
+//     workspace unless --trust is given. --model selects the model. Auth:
+//     `cursor-agent login` (browser; NO_OPEN_BROWSER=1 prints the URL) or
+//     CURSOR_API_KEY. `cursor-agent status` exits 0 even when signed out and
+//     ignores CURSOR_API_KEY, so status uses `cursor-agent models`, which
+//     needs a working session or key: it exits 1 with "Authentication
+//     required" when signed out or "The provided API key is invalid".
+//   - Pi (`pi`, Mario Zechner's coding agent, npm
+//     @earendil-works/pi-coding-agent, formerly @mariozechner/...):
+//     -p/--print runs once and prints the final assistant text; piped stdin
+//     becomes the prompt, and a failed response exits non-zero with the error
+//     on stderr. (--mode json does not exit non-zero on a failed response,
+//     so text print mode is used.) --tools read,grep,find,ls is the
+//     documented read-only tool set and --no-mcp drops MCP tools;
+//     --no-session keeps runs out of the session list. --model takes a
+//     pattern or provider/id. Auth: /login inside interactive pi (OAuth or
+//     API key, saved in ~/.pi/agent/auth.json) or provider env vars such as
+//     ANTHROPIC_API_KEY. `pi --list-models` exits 0 either way, printing a
+//     table of usable models or "No models available. Use /login ...".
 func Preset(kind string) (Spec, bool) {
 	switch CanonicalKind(kind) {
 	case KindCodex:
@@ -146,6 +176,36 @@ func Preset(kind string) (Spec, bool) {
 			LoginNote:   "Adds a provider API key or sign-in, stored in ~/.local/share/opencode/auth.json. Pass `-- --provider anthropic` to skip the provider list. Without any provider OpenCode uses its free OpenCode Zen models.",
 			StatusArgs:  []string{"auth", "list"},
 			statusParse: openCodeStatus,
+		}, true
+	case KindCursor:
+		return Spec{
+			Kind:        KindCursor,
+			Command:     "cursor-agent",
+			Args:        []string{"-p", "--output-format", "json", "--mode", "ask", "--trust", "{{model_args}}", "{{extra_args}}"},
+			ModelFlag:   "--model",
+			PromptMode:  PromptStdin,
+			Output:      OutputJSON,
+			JSONPath:    "result",
+			ErrorPath:   "is_error",
+			Timeout:     10 * time.Minute,
+			LoginArgs:   []string{"login"},
+			LoginNote:   "Opens the Cursor sign-in in your browser. On a headless machine run `NO_OPEN_BROWSER=1 council login cursor` and open the printed URL. For CI, set CURSOR_API_KEY instead.",
+			StatusArgs:  []string{"models"},
+			statusParse: cursorStatus,
+		}, true
+	case KindPi:
+		return Spec{
+			Kind:        KindPi,
+			Command:     "pi",
+			Args:        []string{"-p", "--no-session", "--tools", "read,grep,find,ls", "--no-mcp", "{{model_args}}", "{{extra_args}}"},
+			ModelFlag:   "--model",
+			PromptMode:  PromptStdin,
+			Output:      OutputText,
+			Timeout:     10 * time.Minute,
+			LoginArgs:   []string{},
+			LoginNote:   "Starts pi interactively: type /login, pick a provider (subscription sign-in or API key, saved in ~/.pi/agent/auth.json), then /quit. Provider environment variables such as ANTHROPIC_API_KEY or OPENAI_API_KEY work without logging in.",
+			StatusArgs:  []string{"--list-models"},
+			statusParse: piStatus,
 		}, true
 	}
 	return Spec{}, false
@@ -221,4 +281,70 @@ func openCodeStatus(out string, err error) (AuthState, string) {
 		return AuthOK, "no provider configured: only OpenCode's free models (run `council login opencode` to add one)"
 	}
 	return AuthOK, fmt.Sprintf("%d stored credential(s), %d provider environment variable(s)", creds, envs)
+}
+
+// cursorStatus interprets `cursor-agent models`, which needs a stored login
+// or a valid CURSOR_API_KEY. Signed out it exits 1 with "Error:
+// Authentication required. Run 'agent login', ..."; with a bad key it
+// prints "⚠ Warning: The provided API key is invalid." Anything else that
+// fails (no network, say) is reported as unknown with the CLI's message.
+func cursorStatus(out string, err error) (AuthState, string) {
+	out = ansiRE.ReplaceAllString(out, "")
+	if err == nil {
+		return AuthOK, "signed in (`cursor-agent models` succeeded)"
+	}
+	msg := firstLine(out)
+	msg = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(msg, "⚠"), " "))
+	msg = strings.TrimPrefix(strings.TrimPrefix(msg, "Warning: "), "Error: ")
+	if msg == "" {
+		return AuthUnknown, err.Error()
+	}
+	low := strings.ToLower(msg)
+	if strings.Contains(low, "authentication required") || strings.Contains(low, "api key is invalid") ||
+		strings.Contains(low, "not logged in") || strings.Contains(low, "log in again") {
+		return AuthMissing, msg
+	}
+	return AuthUnknown, msg
+}
+
+// piStatus interprets `pi --list-models`, which exits 0 whether or not a
+// provider is set up. With none it prints "No models available. Use /login
+// to log into a provider via OAuth or API key. ..."; otherwise a table with
+// a "provider model context ..." header and one model per line. Pi checks
+// only that a credential is present, not that it works.
+func piStatus(out string, err error) (AuthState, string) {
+	out = ansiRE.ReplaceAllString(out, "")
+	if err != nil {
+		if l := firstLine(out); l != "" {
+			return AuthUnknown, l
+		}
+		return AuthUnknown, err.Error()
+	}
+	if strings.Contains(out, "No models available") {
+		return AuthMissing, "no provider configured (run `council login pi` and use /login, or set a provider API key such as ANTHROPIC_API_KEY)"
+	}
+	models, providers, table := 0, map[string]bool{}, false
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		switch {
+		case len(f) >= 2 && f[0] == "provider" && f[1] == "model":
+			table = true
+		case table && len(f) >= 2:
+			models++
+			providers[f[0]] = true
+		}
+	}
+	if models == 0 {
+		return AuthUnknown, firstLine(out)
+	}
+	names := make([]string, 0, len(providers))
+	for p := range providers {
+		names = append(names, p)
+	}
+	sort.Strings(names)
+	noun := "models"
+	if models == 1 {
+		noun = "model"
+	}
+	return AuthOK, fmt.Sprintf("%d %s from %s", models, noun, strings.Join(names, ", "))
 }

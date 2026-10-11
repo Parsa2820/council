@@ -81,6 +81,8 @@ func TestPresetsBuildDocumentedFlags(t *testing.T) {
 			KindClaude:      "-p --output-format json --no-session-persistence --model M",
 			KindOpenCode:    "run --format json --agent plan --model M",
 			KindAntigravity: "--input-format stream-json --output-format stream-json --model M",
+			KindCursor:      "-p --output-format json --mode ask --trust --model M",
+			KindPi:          "-p --no-session --tools read,grep,find,ls --no-mcp --model M",
 		}[k]
 		if args != want {
 			t.Errorf("%s args:\n got %s\nwant %s", k, args, want)

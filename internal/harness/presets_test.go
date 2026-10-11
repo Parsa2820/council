@@ -12,14 +12,14 @@ import (
 	"time"
 )
 
-// fakeCLIs copies the fake codex, claude, agy and opencode scripts from
-// testdata/fakecli into a temp dir, puts it first on PATH and returns the
-// paths of files that record the fake's argv and stdin.
+// fakeCLIs copies the fake codex, claude, agy, opencode, cursor-agent and pi
+// scripts from testdata/fakecli into a temp dir, puts it first on PATH and
+// returns the paths of files that record the fake's argv and stdin.
 func fakeCLIs(t *testing.T) (argsFile, stdinFile string) {
 	t.Helper()
 	needSh(t)
 	bin := t.TempDir()
-	for _, name := range []string{"codex", "claude", "agy", "opencode"} {
+	for _, name := range []string{"codex", "claude", "agy", "opencode", "cursor-agent", "pi"} {
 		b, err := os.ReadFile(filepath.Join("testdata", "fakecli", name))
 		if err != nil {
 			t.Fatal(err)
@@ -104,6 +104,18 @@ func TestPresetRunContracts(t *testing.T) {
 		{"open-code", "anthropic/claude-sonnet-4-5", []string{"--variant", "high"},
 			[]string{"run", "--format", "json", "--agent", "plan", "--model", "anthropic/claude-sonnet-4-5", "--variant", "high"},
 			prompt, "opencode read " + strconv.Itoa(n) + " bytes"},
+		{KindCursor, "", nil,
+			[]string{"-p", "--output-format", "json", "--mode", "ask", "--trust"},
+			prompt, "cursor read " + strconv.Itoa(n) + " bytes"},
+		{"cursor-agent", "sonnet-4.5", nil,
+			[]string{"-p", "--output-format", "json", "--mode", "ask", "--trust", "--model", "sonnet-4.5"},
+			prompt, "cursor read " + strconv.Itoa(n) + " bytes"},
+		{KindPi, "", nil,
+			[]string{"-p", "--no-session", "--tools", "read,grep,find,ls", "--no-mcp"},
+			prompt, "pi read " + strconv.Itoa(n) + " bytes"},
+		{"pi-coding-agent", "anthropic/claude-sonnet-4-5", []string{"--thinking", "high"},
+			[]string{"-p", "--no-session", "--tools", "read,grep,find,ls", "--no-mcp", "--model", "anthropic/claude-sonnet-4-5", "--thinking", "high"},
+			prompt, "pi read " + strconv.Itoa(n) + " bytes"},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.model, func(t *testing.T) {
@@ -157,6 +169,14 @@ func TestPresetRunFailures(t *testing.T) {
 		{KindOpenCode, "malformed", []string{"no answer in output"}},
 		{KindOpenCode, "notext", []string{"no answer in output"}},
 		{KindOpenCode, "fail", []string{"exit status 1", "Model not found"}},
+		{KindCursor, "is_error", []string{"harness reported error: usage limit reached"}},
+		{KindCursor, "noauth", []string{"cursor-agent exited: exit status 1", "Error: Authentication required. Please run 'agent login' first"}},
+		{KindCursor, "fail", []string{"exit status 1", "model 'nope' is not available"}},
+		{KindCursor, "malformed", []string{"output is not valid JSON"}},
+		{KindCursor, "empty", []string{"no answer in output"}},
+		{KindPi, "empty", []string{"no answer in output"}},
+		{KindPi, "fail", []string{"pi exited: exit status 1", "upstream failure"}},
+		{KindPi, "noauth", []string{"exit status 1", "No API key found for the selected model"}},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.mode, func(t *testing.T) {
@@ -231,6 +251,15 @@ func TestPresetCheck(t *testing.T) {
 		{KindOpenCode, "env", nil, AuthOK, "1.19.0", "0 stored credential(s), 1 provider environment variable(s)"},
 		{KindOpenCode, "none", nil, AuthOK, "1.19.0", "only OpenCode's free models"},
 		{KindOpenCode, "broken", nil, AuthMissing, "1.19.0", "failed to read auth.json"},
+		{KindCursor, "ok", nil, AuthOK, "2026.10.01-e373342", "signed in"},
+		{KindCursor, "missing", nil, AuthMissing, "2026.10.01-e373342", "Authentication required. Run 'agent login'"},
+		{KindCursor, "badkey", nil, AuthMissing, "2026.10.01-e373342", "The provided API key is invalid."},
+		{KindCursor, "offline", nil, AuthUnknown, "2026.10.01-e373342", "ENOTFOUND"},
+		{KindCursor, "key", map[string]string{"CURSOR_API_KEY": "valid"}, AuthOK, "2026.10.01-e373342", "signed in"},
+		{KindPi, "ok", nil, AuthOK, "1.1.0", "3 models from anthropic, openai"},
+		{KindPi, "none", nil, AuthMissing, "1.1.0", "no provider configured"},
+		{KindPi, "broken", nil, AuthUnknown, "1.1.0", "failed to parse"},
+		{KindPi, "env", map[string]string{"ANTHROPIC_API_KEY": "sk-test"}, AuthOK, "1.1.0", "3 models from anthropic, openai"},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.auth, func(t *testing.T) {
@@ -240,7 +269,7 @@ func TestPresetCheck(t *testing.T) {
 				t.Setenv(k, v)
 			}
 			st := presetHarness(t, c.kind, nil).Check(context.Background())
-			if !st.Installed || st.Agent != c.kind || st.Kind != c.kind || filepath.Base(st.Path) != st.Command {
+			if !st.Installed || st.Agent != c.kind || st.Kind != c.kind || filepath.Base(st.Path) != st.Command || st.Command == "" {
 				t.Errorf("unexpected status %+v", st)
 			}
 			if st.Auth != c.wantAuth || st.Version != c.wantVersion || !strings.Contains(st.Detail, c.wantDetail) {
@@ -271,6 +300,9 @@ func TestPresetLoginCommands(t *testing.T) {
 		{KindAntigravity, []string{"agy"}, "GEMINI_API_KEY"},
 		{"agy", []string{"agy"}, "OS keyring"},
 		{KindOpenCode, []string{"opencode", "auth", "login"}, "--provider"},
+		{KindCursor, []string{"cursor-agent", "login"}, "NO_OPEN_BROWSER=1"},
+		{"cursor-cli", []string{"cursor-agent", "login"}, "CURSOR_API_KEY"},
+		{KindPi, []string{"pi"}, "/login"},
 	}
 	for _, c := range cases {
 		argv, note := presetHarness(t, c.kind, nil).LoginCommand()
@@ -291,6 +323,7 @@ func TestPresetLoginAndStatusAgainstFakes(t *testing.T) {
 		{KindCodex, []string{"login"}},
 		{KindClaude, []string{"auth", "login"}},
 		{KindOpenCode, []string{"auth", "login"}},
+		{KindCursor, []string{"login"}},
 	} {
 		argv, _ := presetHarness(t, c.kind, nil).LoginCommand()
 		out, err := runQuietArgv(argv)
@@ -300,6 +333,10 @@ func TestPresetLoginAndStatusAgainstFakes(t *testing.T) {
 		if got := readLines(t, argsFile); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s login argv %q, want %q", c.kind, got, c.want)
 		}
+	}
+	argv, _ := presetHarness(t, KindPi, nil).LoginCommand()
+	if out, err := runQuietArgv(argv); err != nil || out != "fake pi login: interactive" {
+		t.Errorf("pi login: %q %v", out, err)
 	}
 	for _, kind := range []string{KindCodex, KindClaude} {
 		h := presetHarness(t, kind, nil)
@@ -325,13 +362,15 @@ func TestCanonicalKindAndBuiltins(t *testing.T) {
 		"open-code": KindOpenCode, "OpenCode": KindOpenCode, "openai": KindCodex, "custom": KindGeneric,
 		"gemini": "gemini", "gemini-cli": "gemini-cli",
 		"Codex": KindCodex, "ollama": "ollama", "": "",
+		"cursor": KindCursor, "Cursor-Agent": KindCursor, "cursor-cli": KindCursor,
+		"pi": KindPi, "pi-coding-agent": KindPi,
 	}
 	for in, want := range cases {
 		if got := CanonicalKind(in); got != want {
 			t.Errorf("CanonicalKind(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if got, want := BuiltinKinds(), []string{"antigravity", "claude", "codex", "opencode"}; !reflect.DeepEqual(got, want) {
+	if got, want := BuiltinKinds(), []string{"antigravity", "claude", "codex", "cursor", "opencode", "pi"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("BuiltinKinds() = %q", got)
 	}
 	for _, k := range []string{"generic", "custom", "ollama", "", "gemini", "gemini-cli"} {
@@ -339,7 +378,7 @@ func TestCanonicalKindAndBuiltins(t *testing.T) {
 			t.Errorf("Preset(%q) should not exist", k)
 		}
 	}
-	for _, k := range []string{"codex", "openai", "claude", "claude-code", "antigravity", "agy", "opencode", "open-code"} {
+	for _, k := range []string{"codex", "openai", "claude", "claude-code", "antigravity", "agy", "opencode", "open-code", "cursor", "cursor-agent", "cursor-cli", "pi", "pi-coding-agent"} {
 		sp, ok := Preset(k)
 		if !ok || sp.Kind != CanonicalKind(k) || sp.Timeout != 10*time.Minute || sp.LoginArgs == nil {
 			t.Errorf("Preset(%q) = %+v, %v", k, sp, ok)
@@ -411,5 +450,51 @@ func TestOpenCodeMultiStepAnswerIsTheLastText(t *testing.T) {
 	got, err := presetHarness(t, KindOpenCode, nil).Run(context.Background(), "q")
 	if err != nil || got != "final answer" {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestCursorStatus(t *testing.T) {
+	errExit := errors.New("exit status 1")
+	cases := []struct {
+		name, out string
+		err       error
+		want      AuthState
+		detail    string
+	}{
+		{"signed in", "sonnet-4.5\ngpt-5\n", nil, AuthOK, "signed in (`cursor-agent models` succeeded)"},
+		{"signed out", "Error: Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN.", errExit, AuthMissing, "Authentication required. Run 'agent login', pass --api-key/--auth-token, or set CURSOR_API_KEY/CURSOR_AUTH_TOKEN."},
+		{"bad key", "\x1b[33m⚠ Warning: The provided API key is invalid.\x1b[0m\nThe API key was loaded from the CURSOR_API_KEY environment variable.", errExit, AuthMissing, "The provided API key is invalid."},
+		{"expired", "Your stored authentication is invalid. Please log in again.", errExit, AuthMissing, "Your stored authentication is invalid. Please log in again."},
+		{"not logged in", "Not logged in", errExit, AuthMissing, "Not logged in"},
+		{"network", "Error: getaddrinfo ENOTFOUND api2.cursor.sh", errExit, AuthUnknown, "getaddrinfo ENOTFOUND api2.cursor.sh"},
+		{"silent", "", errExit, AuthUnknown, "exit status 1"},
+	}
+	for _, c := range cases {
+		if got, detail := cursorStatus(c.out, c.err); got != c.want || detail != c.detail {
+			t.Errorf("%s: got %s %q", c.name, got, detail)
+		}
+	}
+}
+
+func TestPiStatus(t *testing.T) {
+	errExit := errors.New("exit status 1")
+	table := "provider  model   context  max-out  thinking  images\nmock      mock-1  128K     16.4K    no        no    \n"
+	cases := []struct {
+		name, out string
+		err       error
+		want      AuthState
+		detail    string
+	}{
+		{"one model", table, nil, AuthOK, "1 model from mock"},
+		{"none", "No models available. Use /login to log into a provider via OAuth or API key. See:\n  /x/docs/providers.md", nil, AuthMissing, "no provider configured (run `council login pi` and use /login, or set a provider API key such as ANTHROPIC_API_KEY)"},
+		{"unexpected", "something new", nil, AuthUnknown, "something new"},
+		{"header only", "provider  model  context\n", nil, AuthUnknown, "provider  model  context"},
+		{"failed", "Error: bad models.json", errExit, AuthUnknown, "Error: bad models.json"},
+		{"failed silently", "", errExit, AuthUnknown, "exit status 1"},
+	}
+	for _, c := range cases {
+		if got, detail := piStatus(c.out, c.err); got != c.want || detail != c.detail {
+			t.Errorf("%s: got %s %q", c.name, got, detail)
+		}
 	}
 }

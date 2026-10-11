@@ -1,0 +1,50 @@
+#!/bin/sh
+# Fake pi coding agent for tests. Mimics `pi -p --no-session --tools
+# read,grep,find,ls --no-mcp` (prompt on stdin, final assistant text on
+# stdout as in pi 1.1.0), `pi --list-models`, bare `pi` and `pi --version`.
+# Env: FAKE_MODE (ok|empty|fail|noauth|hang),
+#      FAKE_AUTH (ok|none or missing|broken|env: ok only if ANTHROPIC_API_KEY is set),
+#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD, FAKE_LOGIN_EXIT.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+auth=${FAKE_AUTH:-ok}
+if [ "$auth" = env ]; then
+	if [ -n "${ANTHROPIC_API_KEY:-}" ]; then auth=ok; else auth=none; fi
+fi
+case "${1:-}" in
+--version | -v) echo "1.1.0"; exit 0 ;;
+--list-models)
+	case "$auth" in
+	ok) printf 'provider   model              context  max-out  thinking  images\nanthropic  claude-haiku-4-5   200K     64K      yes       yes   \nanthropic  claude-sonnet-4-5  1M       64K      yes       yes   \nopenai     gpt-5              400K     128K     yes       yes   \n' ;;
+	none | missing) printf 'No models available. Use /login to log into a provider via OAuth or API key. See:\n  /usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/providers.md\n' ;;
+	broken) echo "Error: failed to parse ~/.pi/agent/models.json" >&2; exit 1 ;;
+	esac
+	exit 0 ;;
+"") echo "fake pi login: interactive"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+esac
+print="" nosession="" tools="" nomcp=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-p | --print) print=1 ;;
+	--no-session) nosession=1 ;;
+	--tools | -t) tools=$2; shift ;;
+	--no-mcp) nomcp=1 ;;
+	--model | --provider | --thinking) shift ;;
+	-*) echo "Unknown option: $1" >&2; exit 1 ;;
+	*) echo "error: the prompt must come on stdin in tests, got argument $1" >&2; exit 1 ;;
+	esac
+	shift
+done
+[ -n "$print" ] || { echo "error: the TUI is not supported in tests" >&2; exit 1; }
+[ -n "$nosession" ] || { echo "error: expected --no-session" >&2; exit 1; }
+[ "$tools" = "read,grep,find,ls" ] || { echo "error: expected the read-only tools, got '$tools'" >&2; exit 1; }
+[ -n "$nomcp" ] || { echo "error: expected --no-mcp" >&2; exit 1; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+case "${FAKE_MODE:-ok}" in
+ok) printf 'pi read %s bytes\n' "${#prompt}" ;;
+empty) ;;
+fail) echo '500: {"message":"upstream failure"}' >&2; exit 1 ;;
+noauth) printf 'No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key.\n' >&2; exit 1 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac
