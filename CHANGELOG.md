@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-10
+
 ### Added
 
 - `council serve`: a local web UI. Type a prompt, pick agents (with the
@@ -109,6 +111,7 @@ First release.
   `docs/CONFIGURATION.md`, `docs/CONSENSUS.md`, `CONTRIBUTING.md`.
 - CI on Linux, macOS and Windows, and a tag-triggered release workflow.
 
-[Unreleased]: https://github.com/Parsa2820/council/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Parsa2820/council/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Parsa2820/council/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Parsa2820/council/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Parsa2820/council/releases/tag/v0.1.0
