@@ -1,0 +1,33 @@
+#!/bin/sh
+# Fake Gemini CLI for tests. Mimics `gemini --output-format json -p TEXT`
+# with the prompt on stdin: {"response": "...", "stats": {...}} on success,
+# {"error": {"type", "message", "code"}} on failure.
+# Env: FAKE_MODE (ok|error|error_exit|malformed|nullresponse|fail|hang),
+#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+[ "${1:-}" = --version ] && { echo "0.9.0"; exit 0; }
+fmt="" p=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--output-format | -o) fmt=$2; shift ;;
+	-p | --prompt) p=$2; shift ;;
+	--model | -m) shift ;;
+	--yolo | --sandbox) ;;
+	*) echo "Unknown argument: $1" >&2; exit 1 ;;
+	esac
+	shift
+done
+[ "$fmt" = json ] || { echo "expected --output-format json" >&2; exit 1; }
+[ -n "$p" ] || { echo "expected -p (non-interactive)" >&2; exit 1; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+case "${FAKE_MODE:-ok}" in
+ok) printf '{"response":"gemini read %s bytes","stats":{"models":{"gemini-2.5-pro":{"api":{"totalRequests":1}}}}}\n' "${#prompt}" ;;
+error) echo '{"error":{"type":"FatalAuthenticationError","message":"Please set an Auth method","code":41}}' ;;
+error_exit) echo '{"error":{"type":"ApiError","message":"Quota exceeded","code":429}}'; exit 1 ;;
+malformed) echo '{"response": "cut off' ;;
+nullresponse) echo '{"response":null,"stats":{}}' ;;
+fail) echo "Error when talking to Gemini API" >&2; exit 52 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac

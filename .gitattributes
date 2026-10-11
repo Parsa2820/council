@@ -1,2 +1,4 @@
 # Shell scripts must keep LF line endings, even in Windows checkouts.
 *.sh text eol=lf
+# The fake CLIs used by the harness tests are extension-less shell scripts.
+internal/harness/testdata/fakecli/* text eol=lf

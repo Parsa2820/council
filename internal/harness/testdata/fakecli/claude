@@ -1,0 +1,43 @@
+#!/bin/sh
+# Fake Claude Code for tests. Mimics `claude -p --output-format json ...`
+# (prompt on stdin, one JSON object {"type":"result","is_error":..,"result":..}
+# on stdout), `claude auth status|login` and `claude --version`.
+# Env: FAKE_MODE (ok|is_error|is_error_exit|malformed|empty|fail|hang), FAKE_AUTH,
+#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+case "${1:-}" in
+--version) echo "2.0.14 (Claude Code)"; exit 0 ;;
+auth)
+	case "${2:-}" in
+	status)
+		if [ "${FAKE_AUTH:-ok}" = ok ]; then echo '{"loggedIn": true, "authMethod": "claude.ai"}'; exit 0; fi
+		echo '{"loggedIn": false}'; exit 1 ;;
+	login) echo "fake claude login: $*"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+	esac
+	echo "error: unknown auth command" >&2; exit 1 ;;
+-p) shift ;;
+*) echo "Error: interactive mode is not supported in tests" >&2; exit 1 ;;
+esac
+fmt=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--output-format) fmt=$2; shift ;;
+	--no-session-persistence) ;;
+	--model | --permission-mode) shift ;;
+	*) echo "error: unknown option '$1'" >&2; exit 1 ;;
+	esac
+	shift
+done
+[ "$fmt" = json ] || { echo "error: expected --output-format json" >&2; exit 1; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+case "${FAKE_MODE:-ok}" in
+ok) printf '{"type":"result","subtype":"success","is_error":false,"duration_ms":1200,"num_turns":1,"result":"claude read %s bytes","session_id":"s-1","total_cost_usd":0.01}\n' "${#prompt}" ;;
+is_error) echo '{"type":"result","subtype":"success","is_error":true,"result":"Credit balance is too low"}' ;;
+is_error_exit) echo '{"type":"result","subtype":"success","is_error":true,"result":"Invalid API key · Please run /login"}'; exit 1 ;;
+malformed) echo "Claude Code is starting..." ;;
+empty) echo '{"type":"result","subtype":"success","is_error":false,"result":"   "}' ;;
+fail) echo "Error: connect ECONNREFUSED" >&2; exit 1 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac

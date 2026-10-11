@@ -1,0 +1,44 @@
+#!/bin/sh
+# Fake Codex CLI for tests. Mimics `codex exec ... --output-last-message FILE -`
+# (prompt on stdin, final message written to FILE, progress on stdout),
+# `codex login`, `codex login status` and `codex --version`.
+# Env: FAKE_MODE (ok|nofile|empty|fail|hang), FAKE_AUTH (ok|missing),
+#      FAKE_ARGS/FAKE_STDIN (record argv/stdin), FAKE_CHILD (pid of hang child).
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+case "${1:-}" in
+--version) echo "codex-cli 0.46.0"; exit 0 ;;
+login)
+	if [ "${2:-}" = status ]; then
+		if [ "${FAKE_AUTH:-ok}" = ok ]; then echo "Logged in using ChatGPT"; exit 0; fi
+		echo "Not logged in" >&2; exit 1
+	fi
+	echo "fake codex login: $*"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+exec) shift ;;
+*) echo "error: unrecognized subcommand '${1:-}'" >&2; exit 2 ;;
+esac
+out="" last=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--output-last-message | -o) out=$2; shift ;;
+	--skip-git-repo-check | --ephemeral | -) ;;
+	--sandbox | --color | --model | -m | -c | --config) shift ;;
+	-*) echo "error: unexpected argument '$1' found" >&2; exit 2 ;;
+	*) echo "error: unexpected positional '$1'" >&2; exit 2 ;;
+	esac
+	last=$1
+	shift
+done
+[ "$last" = - ] || { echo "error: prompt must be '-' (stdin)" >&2; exit 2; }
+[ -n "$out" ] || { echo "error: --output-last-message is required" >&2; exit 2; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+echo "OpenAI Codex v0.46.0 (research preview)"
+echo "workdir: $(pwd)"
+case "${FAKE_MODE:-ok}" in
+ok) printf 'codex read %s bytes\n' "${#prompt}" > "$out" ;;
+nofile) ;;
+empty) : > "$out" ;;
+fail) echo "ERROR: unexpected status 401 Unauthorized" >&2; exit 1 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac

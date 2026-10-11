@@ -1,0 +1,38 @@
+#!/bin/sh
+# Fake Antigravity CLI (agy) for tests. Mimics the stream-json session mode:
+# reads {"event":"user","message":{"content":...}} lines on stdin and writes
+# NDJSON events, ending the turn with {"event":"result","result":{...}}.
+# Env: FAKE_MODE (ok|error|error_exit|malformed|noresult|fail|hang),
+#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+[ "${1:-}" = --version ] && { echo "agy 1.2.0"; exit 0; }
+in="" out=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--input-format) in=$2; shift ;;
+	--output-format) out=$2; shift ;;
+	--model) shift ;;
+	*) echo "unknown flag: $1" >&2; exit 2 ;;
+	esac
+	shift
+done
+[ "$in" = stream-json ] && [ "$out" = stream-json ] || { echo "expected stream-json in and out" >&2; exit 2; }
+IFS= read -r line
+[ -n "${FAKE_STDIN:-}" ] && printf '%s\n' "$line" > "$FAKE_STDIN"
+case "$line" in
+'{"event":"user","message":{"content":'*'}}') ;;
+*) echo '{"event":"result","result":{"status":"ERROR","error":"invalid input event"}}'; exit 1 ;;
+esac
+echo '{"event":"init","session_id":"s-1","model":"gemini-3.1-pro-high"}'
+case "${FAKE_MODE:-ok}" in
+ok)
+	echo '{"event":"step_update","step_update":{"text_delta":"thinking"}}'
+	printf '{"event":"result","result":{"status":"SUCCESS","response":"agy read %s bytes"}}\n' "${#line}" ;;
+error) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"quota exhausted"}}' ;;
+error_exit) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"authentication required"}}'; exit 1 ;;
+malformed) echo 'log: not json'; echo '{"event":"result","result":{"status":"SUCC' ;;
+noresult) echo '{"event":"step_update","step_update":{"text_delta":"partial"}}' ;;
+fail) echo "panic: keyring unavailable" >&2; exit 3 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac
