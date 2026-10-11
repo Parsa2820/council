@@ -1,4 +1,3 @@
-// Package cli implements the council command-line interface.
 package cli
 
 import (

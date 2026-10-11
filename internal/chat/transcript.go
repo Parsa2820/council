@@ -1,6 +1,3 @@
-// Package chat runs the group chat: a shared transcript, round-based
-// prompting of every agent concurrently, consensus detection and the final
-// synthesis step.
 package chat
 
 import (

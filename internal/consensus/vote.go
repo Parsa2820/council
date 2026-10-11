@@ -1,5 +1,3 @@
-// Package consensus parses the structured votes agents attach to their
-// messages and decides whether, and on what, the group agrees.
 package consensus
 
 import (

@@ -1,10 +1,3 @@
-// Package harness adapts LLM coding CLIs ("harnesses") such as Codex CLI,
-// Claude Code, Gemini CLI and Antigravity CLI to a single interface: send a
-// prompt non-interactively, get the agent's final text back.
-//
-// Every adapter, built-in or user-defined, is a CommandHarness configured by a
-// Spec. Built-in harnesses are just Spec presets (see presets.go) that encode
-// each CLI's documented headless flags.
 package harness
 
 import (
@@ -30,6 +23,7 @@ type Checker interface {
 // AuthState describes whether a harness appears signed in.
 type AuthState string
 
+// Auth states reported by Check.
 const (
 	AuthOK      AuthState = "ok"
 	AuthMissing AuthState = "missing"

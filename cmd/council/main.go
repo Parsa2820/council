@@ -1,6 +1,3 @@
-// Command council drives several LLM coding CLIs (Codex, Claude Code, Gemini
-// CLI, Antigravity, or any custom harness) as participants in a group chat
-// and prints the group's consensus answer.
 package main
 
 import (

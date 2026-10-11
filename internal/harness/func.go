@@ -10,11 +10,16 @@ type Func struct {
 	Fn        func(ctx context.Context, prompt string) (string, error)
 }
 
+// Name returns AgentName.
 func (f *Func) Name() string { return f.AgentName }
+
+// Kind returns KindName, or "func" when it is empty.
 func (f *Func) Kind() string {
 	if f.KindName == "" {
 		return "func"
 	}
 	return f.KindName
 }
+
+// Run calls Fn.
 func (f *Func) Run(ctx context.Context, prompt string) (string, error) { return f.Fn(ctx, prompt) }

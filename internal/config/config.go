@@ -1,5 +1,3 @@
-// Package config loads council's YAML configuration, which defines the agents
-// taking part in the group chat and any custom harnesses.
 package config
 
 import (
@@ -21,6 +19,7 @@ import (
 // Duration is a time.Duration that unmarshals from strings like "90s" or "10m".
 type Duration time.Duration
 
+// UnmarshalYAML parses a Go duration string; "" and "0" mean zero.
 func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
 	var s string
 	if err := n.Decode(&s); err != nil {
@@ -38,6 +37,7 @@ func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
+// MarshalYAML renders the duration as a Go duration string such as "10m0s".
 func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
 
 // Config is the root of the config file.
