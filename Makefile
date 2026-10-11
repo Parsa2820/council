@@ -3,7 +3,7 @@ GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BIN     ?= council
 
-.PHONY: all build test vet fmt dist zip source-zip release demo clean
+.PHONY: all build test test-race cover cover-html vet fmt dist zip source-zip release demo clean
 
 all: vet test build
 
@@ -12,6 +12,22 @@ build:
 
 test:
 	$(GO) test ./...
+
+# The race detector needs cgo (a C compiler).
+test-race:
+	$(GO) test -race ./...
+
+# Unit test coverage: per-package figures, then per-function and the total.
+# COVERFLAGS=-race adds the race detector (needs cgo).
+COVERPROFILE ?= cover.out
+COVERFLAGS   ?=
+cover:
+	$(GO) test $(COVERFLAGS) -count=1 -covermode=atomic -coverprofile=$(COVERPROFILE) ./...
+	$(GO) tool cover -func=$(COVERPROFILE)
+
+# Open an annotated HTML coverage report in the browser.
+cover-html: cover
+	$(GO) tool cover -html=$(COVERPROFILE)
 
 vet:
 	$(GO) vet ./...
@@ -40,4 +56,4 @@ demo: build
 	./$(BIN) ask --config examples/fake-council.yaml --verbose "What is 6 * 7?"
 
 clean:
-	rm -rf dist $(BIN)
+	rm -rf dist $(BIN) $(COVERPROFILE)
