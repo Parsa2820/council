@@ -123,15 +123,17 @@ See [WEB_UI.md](WEB_UI.md) for the event format.
   reads stdout or the output file, and extracts the answer (`parse`/`extract`,
   using `Lookup` for JSON paths).
 * `Preset(kind)` returns the built-in `Spec` for `codex`, `claude`,
-  `antigravity` and `opencode`. `CanonicalKind` resolves aliases (`agy`,
-  `claude-code`, `open-code`, `openai`, `custom`). `Removed` names kinds that
+  `antigravity`, `opencode`, `cursor` and `pi`. `CanonicalKind` resolves
+  aliases (`agy`, `claude-code`, `open-code`, `cursor-agent`, `cursor-cli`,
+  `pi-coding-agent`, `openai`, `custom`). `Removed` names kinds that
   no longer exist (`gemini`, `gemini-cli`), so `config` can say what to use
   instead.
 * `Check` implements `council doctor` and the web UI's status badges:
   `exec.LookPath`, `--version`, then `StatusArgs`. By default exit 0 means
   signed in; a preset can also parse the output (`antigravityStatus` for
-  `agy models`, `openCodeStatus` for `opencode auth list`, which always exits
-  0). `Spec.SetStatusArgs`, used for a config's `status_args`, drops that
+  `agy models`, `cursorStatus` for `cursor-agent models`, `piStatus` for
+  `pi --list-models`, `openCodeStatus` for `opencode auth list`; the last
+  two always exit 0). Status checks run with the agent's env and workdir. `Spec.SetStatusArgs`, used for a config's `status_args`, drops that
   parser.
 * `configureProcess` (in `proc_unix.go` / `proc_windows.go`) puts the child in
   its own process group on Unix, so cancelling the context kills the whole

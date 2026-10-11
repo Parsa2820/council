@@ -7,6 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Cursor CLI harness (`harness: cursor`, aliases `cursor-agent` and
+  `cursor-cli`): runs `cursor-agent -p --output-format json --mode ask
+  --trust` (print mode in the read-only Ask mode) with the prompt on stdin
+  and reads `result`; `is_error` fails the turn. `council login cursor`
+  runs `cursor-agent login`. Status uses `cursor-agent models`, which fails
+  with "Authentication required" when signed out and with "The provided API
+  key is invalid" for a bad `CURSOR_API_KEY` (`cursor-agent status` exits 0
+  either way and ignores the key). Cursor is now one of the default agents.
+- pi harness (`harness: pi`, alias `pi-coding-agent`) for Mario Zechner's
+  pi coding agent (`@earendil-works/pi-coding-agent`): runs `pi -p
+  --no-session --tools read,grep,find,ls --no-mcp` (read-only tools only)
+  with the prompt on stdin and reads the final text. `council login pi`
+  starts pi for `/login`; status uses `pi --list-models`.
+
+### Changed
+
+- The default agents (`defaults.agents` and `council init`) are now
+  `codex`, `claude`, `agy` and `cursor`.
+- Status checks (`council doctor` and the web UI) now run with the agent's
+  `env:` and `workdir`, like its turns, so an API key set under `env:`
+  counts.
+- When a CLI exits with an error and prints nothing on stdout, the error is
+  its own message instead of a JSON parse error such as "unexpected end of
+  JSON input".
+
 ## [0.2.1] - 2026-10-11
 
 ### Fixed

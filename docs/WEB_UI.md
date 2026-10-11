@@ -116,7 +116,7 @@ an invalid config file).
      "path": "/usr/local/bin/codex", "version": "codex-cli 0.50.0",
      "auth": "ok", "detail": "Logged in using ChatGPT", "default": true}
   ],
-  "defaults": {"agents": ["codex", "claude", "agy"], "rounds": 3,
+  "defaults": {"agents": ["codex", "claude", "agy", "cursor"], "rounds": 3,
                "moderator": "majority", "timeout": "10m0s"},
   "limits": {"max_prompt_bytes": 200000, "max_agents": 12, "max_rounds": 10,
              "max_timeout_ns": 3600000000000}

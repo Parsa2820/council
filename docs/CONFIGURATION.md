@@ -54,7 +54,7 @@ unnoticed.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `agents` | list of names | `[codex, claude, agy]` | Agents used by `council ask` when `--agents` is not given. Order matters: it is the order of messages in the transcript and the last tie-breaker of the majority vote. Names are checked when `ask` runs, not when the file loads. |
+| `agents` | list of names | `[codex, claude, agy, cursor]` | Agents used by `council ask` when `--agents` is not given. Order matters: it is the order of messages in the transcript and the last tie-breaker of the majority vote. Names are checked when `ask` runs, not when the file loads. |
 | `rounds` | integer ≥ 1 | `3` | Maximum number of rounds. Round 1 is the independent answer; the chat stops early on consensus. `0` or a missing value means 3. |
 | `moderator` | `majority` or an agent name | `majority` | Who decides when there is no consensus, and who writes the final synthesis. With an agent name, that agent always runs after the discussion. See [CONSENSUS.md](CONSENSUS.md#moderator). (`vote` and `none` are accepted by `--moderator`, not here.) |
 | `timeout` | duration | `10m` | Per-turn limit for every agent without its own `timeout`. Go duration syntax: `90s`, `5m`, `1h30m`. `0` means the default (10m); turns cannot be unlimited. |
@@ -69,8 +69,8 @@ optional except where noted.
 
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
-| `harness` | string | all | `codex`, `claude`, `antigravity`, `opencode` or `generic`, case-insensitive. Aliases: `agy` → antigravity, `claude-code` → claude, `open-code` → opencode, `openai` → codex, `custom` → generic. If omitted: the built-in whose name equals the agent name, otherwise `generic`. `gemini` and `gemini-cli` (Gemini CLI, removed in v0.2.1) are an error that suggests `antigravity` or `generic`. |
-| `command` | string | all; **required for generic** | Program to run: a name looked up on `PATH`, or a path. A leading `~` and `$VARS` / `${VARS}` are expanded. A relative path (one containing a slash, like `./bin/x`) is resolved against `workdir` if set, otherwise against the directory you run council from. Built-in default: `codex`, `claude`, `agy`, `opencode`. |
+| `harness` | string | all | `codex`, `claude`, `antigravity`, `opencode`, `cursor`, `pi` or `generic`, case-insensitive. Aliases: `agy` → antigravity, `claude-code` → claude, `open-code` → opencode, `cursor-agent` and `cursor-cli` → cursor, `pi-coding-agent` → pi, `openai` → codex, `custom` → generic. If omitted: the built-in whose name equals the agent name, otherwise `generic`. `gemini` and `gemini-cli` (Gemini CLI, removed in v0.2.1) are an error that suggests `antigravity` or `generic`. |
+| `command` | string | all; **required for generic** | Program to run: a name looked up on `PATH`, or a path. A leading `~` and `$VARS` / `${VARS}` are expanded. A relative path (one containing a slash, like `./bin/x`) is resolved against `workdir` if set, otherwise against the directory you run council from. Built-in default: `codex`, `claude`, `agy`, `opencode`, `cursor-agent`, `pi`. |
 | `args` | list of strings | all | Argument template; replaces the preset's entirely. See [placeholders](HARNESSES.md#placeholders). `$VARS` are **not** expanded here. |
 | `extra_args` | list of strings | all | Inserted where the template has `{{extra_args}}` (all presets do), or appended after the template. |
 | `model` | string | all | Model name. Becomes `model_flag model` through `{{model_args}}`, and replaces `{{model}}`. |
@@ -85,7 +85,7 @@ optional except where noted.
 | `env` | map of string → string | all | Extra environment variables, added to council's own environment. Values may reference `$VARS`, expanded when the CLI starts. |
 | `workdir` | string | all | Working directory for the CLI (`~` expanded, `$VARS` not). Default: the directory you run council from. Also available as `{{workdir}}`. |
 | `login_args` | list of strings | all | `council login <name>` runs `command login_args… [args after --]`. Unset = no login command; `[]` = run `command` with no arguments. |
-| `status_args` | list of strings | all | `council doctor` and the web UI run `command status_args…`; exit 0 = signed in. Unset = the preset's check (`codex login status`, `claude auth status`, `agy models`, `opencode auth list`), or `unknown` for generic agents. Setting it replaces the preset's check, including how its output is read. |
+| `status_args` | list of strings | all | `council doctor` and the web UI run `command status_args…`; exit 0 = signed in. Unset = the preset's check (`codex login status`, `claude auth status`, `agy models`, `opencode auth list`, `cursor-agent models`, `pi --list-models`), or `unknown` for generic agents. It runs with the agent's `env` and `workdir`. Setting it replaces the preset's check, including how its output is read. |
 
 Durations accept Go syntax (`300ms`, `45s`, `10m`, `1h`). An invalid one is
 reported with its line number.
@@ -96,7 +96,7 @@ When council needs agent `NAME` (from `--agents`, `defaults.agents`,
 `--moderator`, `defaults.moderator`, `doctor` or `login`):
 
 1. If `NAME` is not under `agents:` but is a built-in kind (`codex`, `claude`,
-   `antigravity`, `agy`, `opencode`, or another alias), it is treated as
+   `antigravity`, `agy`, `opencode`, `cursor`, `pi`, or another alias), it is treated as
    `NAME: {harness: NAME}`. Otherwise it is an error:
    `unknown agent "NAME" (define it under \`agents:\` in <path>)`.
 2. The kind is `harness` resolved through the aliases; if empty, the built-in
@@ -137,7 +137,7 @@ file. Agents that are only implied by name (step 1) are not listed there, but
 
 defaults:
   # Who takes part when --agents is not given, in this order.
-  agents: [codex, claude, agy]
+  agents: [codex, claude, agy, cursor]
   # Up to 3 rounds: independent answers, then up to two rounds of critique.
   rounds: 3
   # Plain majority vote when there is no consensus. Put an agent name here
@@ -170,6 +170,14 @@ agents:
     model: anthropic/claude-sonnet-4-5 # -> opencode run … --model anthropic/claude-sonnet-4-5
     env:
       ANTHROPIC_API_KEY: $MY_ANTHROPIC_KEY   # expanded when the CLI starts
+
+  cursor:
+    harness: cursor                    # aliases: cursor-agent, cursor-cli
+    model: gpt-5                       # -> cursor-agent -p … --model gpt-5
+
+  pi:
+    harness: pi
+    model: anthropic/claude-sonnet-4-5:high   # pattern or provider/id[:thinking]
 
   # Second Claude with a bigger model, e.g. as moderator:
   #   council ask --moderator claude-opus "…"
@@ -233,7 +241,7 @@ exists:
 
 defaults:
   # Agents used by "council ask" when --agents is not given.
-  agents: [codex, claude, agy]
+  agents: [codex, claude, agy, cursor]
   # Maximum discussion rounds (round 1 = independent answers).
   rounds: 3
   # "majority" for a plain vote, or the name of an agent to act as moderator.
@@ -261,6 +269,12 @@ agents:
   opencode:
     harness: opencode       # opencode run --format json --agent plan  (prompt on stdin)
     # model: anthropic/claude-sonnet-4-5   (provider/model, see "opencode models")
+  cursor:
+    harness: cursor         # cursor-agent -p --output-format json --mode ask --trust  (prompt on stdin)
+    # model: sonnet-4.5     (see "cursor-agent models")
+  pi:
+    harness: pi             # pi -p --no-session --tools read,grep,find,ls --no-mcp  (prompt on stdin)
+    # model: anthropic/claude-sonnet-4-5   (pattern or provider/id, see "pi --list-models")
 
   # (commented generic harness examples follow in the real file)
 ```
@@ -277,7 +291,7 @@ the file path:
 | `line N: invalid duration "X"` | Use Go duration syntax such as `90s` or `10m`. |
 | `defaults.rounds must be >= 1` | Use a positive number. |
 | `defaults.moderator: unknown agent "X" …` | Use `majority` or a defined or built-in agent name. |
-| `agent "X": unknown harness "Y" (want one of antigravity, claude, codex, opencode or generic)` | Fix `harness:`. |
+| `agent "X": unknown harness "Y" (want one of antigravity, claude, codex, cursor, opencode, pi or generic)` | Fix `harness:`. |
 | `agent "X": the gemini harness was removed in council v0.2.1 because Gemini CLI is deprecated; use ...` | Switch the agent to `harness: antigravity` (Google's Antigravity CLI) or `harness: generic`, and update `defaults.agents` if it lists it. |
 | `agent "X": generic harness needs \`command\`` | Add `command:`. |
 | `agent "X": unknown prompt_mode "Y" (want arg, stdin or file)` | Fix `prompt_mode:`. |

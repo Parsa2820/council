@@ -40,8 +40,9 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # Tests that need /bin/sh (the fake codex/claude/agy/opencode CLIs in
-      # internal/harness/testdata/fakecli and examples/fake-agent.sh) skip
+      # Tests that need /bin/sh (the fake codex/claude/agy/opencode/
+      # cursor-agent/pi CLIs in internal/harness/testdata/fakecli and
+      # examples/fake-agent.sh) skip
       # themselves on Windows.
       - name: go test
         shell: bash

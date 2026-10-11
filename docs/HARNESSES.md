@@ -5,8 +5,8 @@ get an answer back from. Each participant in the chat (an **agent**) is a named
 harness configuration. You can have several agents on the same harness, for
 example two Claude Code agents with different models.
 
-council ships four built-in adapters (codex, claude, agy and opencode) and a `generic` one that can drive almost
-any CLI. All of them run on the same code (`harness.CommandHarness`): a
+council ships six built-in adapters (codex, claude, agy, opencode, cursor and
+pi) and a `generic` one that can drive almost any CLI. All of them run on the same code (`harness.CommandHarness`): a
 built-in adapter is just a preset of the fields you could also write yourself
 in the [config](CONFIGURATION.md).
 
@@ -16,6 +16,8 @@ in the [config](CONFIGURATION.md).
   - [claude: Claude Code](#claude-claude-code)
   - [agy: Google Antigravity CLI](#agy-google-antigravity-cli)
   - [opencode: OpenCode](#opencode-opencode)
+  - [cursor: Cursor CLI](#cursor-cursor-cli)
+  - [pi: Pi coding agent](#pi-pi-coding-agent)
   - [Gemini CLI (removed)](#gemini-cli-removed)
 - [Overriding a built-in harness](#overriding-a-built-in-harness)
 - [Adding a custom harness](#adding-a-custom-harness)
@@ -157,6 +159,79 @@ on providers that support it.
 Checked against opencode-ai 1.19.0 from npm and the
 [CLI docs](https://opencode.ai/docs/cli/).
 
+### cursor: Cursor CLI
+
+| | |
+|---|---|
+| Kind / aliases | `cursor` / `cursor-agent`, `cursor-cli` |
+| Command | `cursor-agent -p --output-format json --mode ask --trust [--model M] [extra_args…]` |
+| Prompt | stdin (with no prompt argument and piped stdin, print mode reads all of stdin as the prompt) |
+| Answer | one JSON object, `{"type":"result","subtype":"success","is_error":false,"result":…}`; `result` is the answer and a true `is_error` fails the turn. On failure the CLI exits non-zero with a message on stderr and no JSON. |
+| Login | `council login cursor` → `cursor-agent login` (opens the browser; `NO_OPEN_BROWSER=1 council login cursor` prints the URL instead). For CI, set `CURSOR_API_KEY` (in your shell or the agent's `env:`). |
+| Status | `cursor-agent models`. Signed out it exits 1 with "Authentication required. Run 'agent login', …"; with a bad key, "The provided API key is invalid." `doctor` shows `missing` with that message, `ok` when the command succeeds, and `unknown` for other failures (such as no network). |
+
+The installer (`curl https://cursor.com/install -fsS | bash`) puts the same
+binary on `PATH` as `cursor-agent` and `agent`; council uses `cursor-agent`
+because `agent` is too generic a name. `-p`/`--print` is the non-interactive
+mode. `--mode ask` is Cursor's read-only Q&A mode (`plan` is the other
+read-only mode, for proposing plans); council never passes `--force`, without
+which print mode only proposes changes anyway. In print mode an untrusted
+workspace is refused ("Workspace Trust Required") unless `--trust` is given,
+so the preset passes it; Cursor remembers that decision for the directory you
+run council in. `--model` takes a name from `cursor-agent models`, such as
+`gpt-5` or `sonnet-4`.
+
+Why `models` and not `status`: `cursor-agent status` (alias `whoami`, with
+`--format json`) exits 0 even when signed out (`{"status":"unauthenticated",
+"isAuthenticated":false,…}`), and it only looks at the stored login, so it
+says "Not logged in" even when `CURSOR_API_KEY` is set. `cursor-agent models`
+needs a working session or key, costs no tokens, and fails clearly. The
+status check runs with the agent's `env:`, so a key set there counts.
+
+Checked against cursor-agent 2026.10.01-e373342 (installed with the official
+script) and the [CLI docs](https://cursor.com/docs/cli/reference/parameters),
+signed out and with an invalid key. The JSON shape of a successful run comes
+from the [output format docs](https://cursor.com/docs/cli/reference/output-format).
+
+### pi: Pi coding agent
+
+| | |
+|---|---|
+| Kind / aliases | `pi` / `pi-coding-agent` |
+| Command | `pi -p --no-session --tools read,grep,find,ls --no-mcp [--model M] [extra_args…]` |
+| Prompt | stdin (piped stdin becomes the prompt; with a message argument it is prepended) |
+| Answer | plain text: print mode writes only the final assistant text to stdout. A failed response exits non-zero with the error on stderr, for example "No API key found for the selected model." |
+| Login | `council login pi` starts `pi` interactively: type `/login`, choose a provider (a subscription sign-in or an API key; saved in `~/.pi/agent/auth.json`), then `/quit`. Provider environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, …; see `pi --help`) work without logging in. |
+| Status | `pi --list-models`, which exits 0 either way: it prints a table of the models you can use, or "No models available. Use /login …". `doctor` shows `ok` with the number of models and their providers, or `missing`. |
+
+This is Mario Zechner's pi coding agent, npm
+[`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+(formerly `@mariozechner/pi-coding-agent`, from the `badlogic/pi-mono`
+repository, now `earendil-works/pi`); it needs Node.js 22.19 or later:
+
+```sh
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+```
+
+`-p` runs once and exits. `--tools read,grep,find,ls` is the read-only tool
+set from pi's own documentation (no `bash`, `edit` or `write`), and `--no-mcp`
+also removes MCP tools, which `--tools` would otherwise keep. `--no-session`
+keeps council's turns out of pi's session list. `--model` takes a pattern or
+`provider/id`, optionally with a thinking level (`sonnet:high`);
+`extra_args: ["--thinking", "high"]` works too. council uses print mode
+rather than `--mode json` because JSON mode does not exit non-zero when the
+model call fails.
+
+`pi --list-models` only shows that a credential is present, not that it
+works; `council doctor --probe pi` sends a real prompt. `pi auth check
+--provider P` exits 0, 1 or 2 for ready, not ready or invalid, so if you use
+one provider you can set `status_args: ["auth", "check", "--provider",
+"anthropic"]` for a stricter check.
+
+Checked against `@earendil-works/pi-coding-agent` 1.1.0 from npm (with
+Node.js 22) and its bundled docs: `--help`, signed out, and a full run against
+a local OpenAI-compatible test server configured in `~/.pi/agent/models.json`.
+
 ### Gemini CLI (removed)
 
 The `gemini` harness (Gemini CLI) was removed in council v0.2.1 because Gemini
@@ -196,6 +271,16 @@ agents:
   opencode:
     harness: opencode
     model: anthropic/claude-sonnet-4-5   # -> --model anthropic/claude-sonnet-4-5
+
+  cursor:
+    harness: cursor
+    model: gpt-5                         # -> --model gpt-5
+    env:
+      CURSOR_API_KEY: $MY_CURSOR_KEY     # instead of `council login cursor`
+
+  pi:
+    harness: pi
+    model: anthropic/claude-sonnet-4-5:high
 
   # Antigravity in plain print mode instead of the stream-json session.
   agy-print:
@@ -441,6 +526,8 @@ agents:
   then decides.
 * `doctor` always runs `<command> --version` and shows the first line, if the
   command succeeds.
+* The status command runs with the agent's `env:` and `workdir`, like a turn,
+  so an API key set under `env:` counts.
 
 ### Checklist
 

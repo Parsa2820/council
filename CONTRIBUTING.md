@@ -90,7 +90,7 @@ and fails on Linux and macOS if the total drops below 90%.
 |---|---|---|
 | `cmd/council` | `run` (exit codes, streams), `isTerminal` (pipe, file, character device), `main` | in-process, with `exit` replaced |
 | `internal/consensus` | vote parsing (every fence spelling, bare JSON, aliases, broken blocks, last block wins, missing vote, confidence clamping), `StripVote`, the brace scanner, normalization, agreement, quorum, majority and tie-breaks | table-driven pure functions |
-| `internal/harness` | JSON paths, argument templating, `stdin_template`, spec validation and defaults, every prompt mode and output format, `error_path`, null and empty answers, non-zero exits, stderr tails, cancellation, timeouts that kill the whole process tree, env, workdir, doctor checks, the `agy models` and `opencode auth list` status parsers, removed kinds, login commands | the fake CLIs below, plus small generated shell scripts |
+| `internal/harness` | JSON paths, argument templating, `stdin_template`, spec validation and defaults, every prompt mode and output format, `error_path`, null and empty answers, non-zero exits, stderr tails, cancellation, timeouts that kill the whole process tree, env, workdir, doctor checks, the `agy models`, `cursor-agent models`, `pi --list-models` and `opencode auth list` status parsers, status checks with the agent's env, removed kinds, login commands | the fake CLIs below, plus small generated shell scripts |
 | `internal/config` | durations, path resolution (`$COUNCIL_CONFIG`, `$XDG_CONFIG_HOME`, `config.yml`, `config`), load and parse errors, unknown fields, validation, preset overrides, `~` and `$VAR` expansion, `init` with and without `--force` | YAML snippets |
 | `internal/chat` | convergence, early stop in round 1, prompts and the moderator prompt, transcript rendering (`Discussion`, `Markdown`), event order, majority fallback, quorum, explicit agreement, moderator synthesis, fallback and replies without a vote, failing agents, abstentions, concurrency, turn timeouts, cancellation | in-process fakes (`harness.Func`) |
 | `internal/cli` | every command and flag of `ask`, `init`, `doctor`/`status` (table, `--json`, `--probe`), `login` (extra args, failures), `agents`, `serve` (flags, URL, `--open`, the non-loopback warning, shutdown, listener errors), `version`, `help`, exit codes, prompt sources, the live printer and result line | `examples/fake-agent.sh` through the generic harness, and the fake CLIs below; `serve` on port 0 with `openBrowser` and `listen` replaced |
@@ -102,7 +102,7 @@ there but covers less. CI runs the suite on Linux, macOS and Windows.
 ### The fake harness CLIs
 
 `internal/harness/testdata/fakecli/` holds shell-script stand-ins for `codex`,
-`claude`, `agy` and `opencode`. Tests copy them into a temp dir at the front of
+`claude`, `agy`, `opencode`, `cursor-agent` and `pi`. Tests copy them into a temp dir at the front of
 `PATH`, so the built-in presets run unchanged. Each fake rejects arguments the
 real CLI would not accept in our invocation, reads the prompt the way the real
 one does, and prints the real output format:
@@ -113,11 +113,14 @@ one does, and prints the real output format:
 | `claude` | `-p --output-format json --no-session-persistence`, prompt on stdin | `{"type":"result","is_error":…,"result":…}` |
 | `agy` | `--input-format stream-json --output-format stream-json`, one `{"event":"user",…}` line on stdin | NDJSON events ending in `{"event":"result","result":{…}}` |
 | `opencode` | `run --format json --agent plan`, message on stdin and no positional arguments | NDJSON events: `step_start`, `text` (`part.text`), `step_finish`, or `error` |
+| `cursor-agent` | `-p --output-format json --mode ask --trust`, prompt on stdin and no positional arguments | `{"type":"result","is_error":…,"result":…}`, or an error on stderr and exit 1 |
+| `pi` | `-p --no-session --tools read,grep,find,ls --no-mcp`, prompt on stdin | the final text on stdout, or an error on stderr and exit 1 |
 
-All four answer `--version`; `codex login [status]`, `claude auth
-login|status`, `agy models` and `opencode auth login|list` behave like the
-real commands (the agy and opencode fakes were checked against the real
-agy 1.3.3 and opencode 1.19.0). Environment variables select the behaviour: `FAKE_MODE` (`ok`, or a
+All six answer `--version`; `codex login [status]`, `claude auth
+login|status`, `agy models`, `opencode auth login|list`, `cursor-agent
+models|status|login` and `pi --list-models` behave like the real commands
+(the agy, opencode, cursor-agent and pi fakes were checked against the real
+agy 1.3.3, opencode 1.19.0, cursor-agent 2026.10.01-e373342 and pi 1.1.0). Environment variables select the behaviour: `FAKE_MODE` (`ok`, or a
 failure such as `fail`, `malformed`, `hang`; see each script), `FAKE_AUTH`
 (`ok`, `missing`, and per-script states such as `nokey` or `none`), `FAKE_LOGIN_EXIT`, and
 `FAKE_ARGS`/`FAKE_STDIN` (files that record the argv and stdin they received).

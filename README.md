@@ -4,7 +4,8 @@
 returns the group's **consensus answer**.
 
 You ask a question once. OpenAI Codex, Claude Code, Google Antigravity,
-OpenCode, and any other CLI you configure each answer it on their own.
+Cursor, OpenCode, pi, and any other CLI you configure each answer it on their
+own.
 Then they read each other's answers, critique them and revise. Every turn ends
 with a small JSON vote. The chat stops when everyone agrees, or after a fixed
 number of rounds. The final answer comes from that consensus, a majority vote,
@@ -20,7 +21,7 @@ Final answer: Usually yes for read-heavy workloads with long critical sections, 
 
 * **No API keys of its own.** council runs the CLIs you already have installed
   and signed in. It never reads or stores credentials.
-* **Any CLI can join.** Besides the four built-in adapters, a `generic` harness
+* **Any CLI can join.** Besides the six built-in adapters, a `generic` harness
   can drive any command that takes a prompt (argument, stdin or file) and
   prints an answer (text, JSON or JSON Lines).
 * **Single static binary** for macOS, Linux and Windows. Nothing to install at
@@ -105,6 +106,8 @@ flowchart TD
 | `claude` | Claude Code | `claude -p --output-format json --no-session-persistence` (prompt on stdin) | `.result`; `.is_error` marks failure |
 | `agy` (kind `antigravity`) | Google Antigravity CLI | `agy --input-format stream-json --output-format stream-json`, prompt sent as one `{"event":"user","message":{"content":…}}` line on stdin | `result.response` of the last event that has it; `result.error` marks failure |
 | `opencode` | OpenCode | `opencode run --format json --agent plan` (prompt on stdin; the read-only Plan agent) | `part.text` of the last `text` event; an `error` event marks failure |
+| `cursor` | Cursor CLI | `cursor-agent -p --output-format json --mode ask --trust` (prompt on stdin; the read-only Ask mode) | `.result`; `.is_error` marks failure |
+| `pi` | pi coding agent | `pi -p --no-session --tools read,grep,find,ls --no-mcp` (prompt on stdin; read-only tools) | stdout (final assistant text) |
 | anything else | `generic` | your own command template | text, a JSON path, or a JSON Lines path |
 
 [docs/HARNESSES.md](docs/HARNESSES.md) describes each adapter in detail and how
@@ -217,8 +220,8 @@ make zip        # dist/ zipped into ../council-binaries.zip
 ```
 
 The unit tests need no LLM CLI, network or credentials: the built-in
-harnesses are tested against fake `codex`, `claude`, `agy` and `opencode`
-scripts. Statement coverage is 99.5% on Linux and macOS (every package at
+harnesses are tested against fake `codex`, `claude`, `agy`, `opencode`,
+`cursor-agent` and `pi` scripts. Statement coverage is 99.5% on Linux and macOS (every package at
 98.9% or more) and 81.3% on Windows, which skips the shell-script tests; see [CONTRIBUTING.md](CONTRIBUTING.md#tests) for details.
 
 `make build` stamps the version from `git describe --tags --always --dirty`.
@@ -236,6 +239,8 @@ npm install -g @openai/codex            # codex
 npm install -g @anthropic-ai/claude-code   # claude
 curl -fsSL https://antigravity.google/cli/install.sh | bash   # agy (Antigravity CLI)
 npm install -g opencode-ai              # opencode
+curl https://cursor.com/install -fsS | bash                   # cursor-agent (Cursor CLI)
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent   # pi (Node.js 22.19+)
 ```
 
 ## Quick start
@@ -250,12 +255,13 @@ council doctor --probe       # send a one-line prompt through each one
 council ask "What is the time complexity of Go's sort.Slice?"
 ```
 
-By default `council ask` uses `codex`, `claude` and `agy`, up to 3 rounds,
+By default `council ask` uses `codex`, `claude`, `agy` and `cursor`, up to 3 rounds,
 and a majority vote. Pick different agents with `--agents`:
 
 ```sh
 council ask --agents claude,opencode "…"
 council ask --agents codex,claude,agy,opencode --rounds 4 --moderator claude "…"
+council ask --agents cursor,pi,claude "…"
 ```
 
 Common ways to pass the prompt:
@@ -285,6 +291,8 @@ harness afterwards.
 | `claude` | `claude auth login` | `-- --console` (Anthropic Console / API billing), `-- --sso` | `claude auth status`, exit 0 = signed in |
 | `agy` | `agy` (interactive): sign in with Google (prints a URL over SSH), then type `/quit`; the session goes to the OS keyring | none | `agy models` (no tokens used): it lists models when signed in and fails with "Please sign in to view available models" when not |
 | `opencode` | `opencode auth login` (pick a provider, paste a key or sign in) | `-- --provider anthropic` | `opencode auth list`: counts stored credentials and provider env vars. Always `ok`, because OpenCode's free models need no account; the detail says when no provider is configured |
+| `cursor` | `cursor-agent login` (Cursor sign-in in the browser) | run as `NO_OPEN_BROWSER=1 council login cursor` to print the URL instead | `cursor-agent models` (no tokens used): fails with "Authentication required" when signed out and "The provided API key is invalid" for a bad `CURSOR_API_KEY`. (`cursor-agent status` exits 0 even when signed out and ignores `CURSOR_API_KEY`.) |
+| `pi` | `pi` (interactive): type `/login`, pick a provider (subscription or API key; saved in `~/.pi/agent/auth.json`), then `/quit` | none | `pi --list-models`: `ok` with the models it can use, `missing` for "No models available". Provider keys such as `ANTHROPIC_API_KEY` count |
 | generic | `<command> <login_args…>` if `login_args` is set | anything after `--` | `<command> <status_args…>`, exit 0 = signed in, if `status_args` is set; otherwise `unknown` |
 
 Examples:
@@ -295,6 +303,7 @@ printenv OPENAI_API_KEY | council login codex -- --with-api-key
 council login claude -- --console
 council login opencode -- --provider anthropic
 council doctor --probe agy opencode   # prove that agy and opencode really answer
+NO_OPEN_BROWSER=1 council login cursor   # print the Cursor sign-in URL instead of opening it
 ```
 
 An `unknown` auth state is not an error. Use `council doctor --probe` for a
@@ -459,7 +468,9 @@ AGENT     KIND         PROMPT  OUTPUT                 COMMAND LINE
 agy       antigravity  stdin   jsonl:result.response  agy --input-format stream-json --output-format stream-json
 claude    claude       stdin   json:result            claude -p --output-format json --no-session-persistence
 codex     codex        stdin   text (file)            codex exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message <output_file> -
+cursor    cursor       stdin   json:result            cursor-agent -p --output-format json --mode ask --trust
 opencode  opencode     stdin   jsonl:part.text        opencode run --format json --agent plan
+pi        pi           stdin   text                   pi -p --no-session --tools read,grep,find,ls --no-mcp
 ```
 
 ### `council serve`
@@ -497,8 +508,9 @@ A complete, annotated example:
 ```yaml
 defaults:
   # Agents used when --agents is not given. Built-in names (codex, claude,
-  # agy, antigravity, opencode) work even if they are not listed under agents:.
-  agents: [codex, claude, agy]
+  # agy, antigravity, opencode, cursor, pi) work even if they are not listed
+  # under agents:.
+  agents: [codex, claude, agy, cursor]
   # Maximum rounds (>= 1). Round 1 = independent answers.
   rounds: 3
   # "majority" for a plain vote, or the name of an agent that writes the
@@ -529,6 +541,12 @@ agents:
     model: anthropic/claude-sonnet-4-5   # provider/model, see `opencode models`
     env:
       ANTHROPIC_API_KEY: $MY_ANTHROPIC_KEY   # $VARS are expanded when the CLI starts
+  cursor:
+    harness: cursor               # aliases: cursor-agent, cursor-cli
+    model: gpt-5                  # see `cursor-agent models`
+  pi:
+    harness: pi
+    model: anthropic/claude-sonnet-4-5   # pattern or provider/id, see `pi --list-models`
 
   # The same CLI can join twice with different settings.
   claude-opus:
@@ -565,7 +583,7 @@ agents:
 
 | Field | Meaning |
 |---|---|
-| `harness` | `codex`, `claude`, `antigravity`, `opencode` or `generic`. Aliases: `agy`, `claude-code`, `open-code`, `openai` (= codex), `custom` (= generic). If omitted: the preset named like the agent, otherwise `generic`. `gemini` was removed in v0.2.1 and is now an error. |
+| `harness` | `codex`, `claude`, `antigravity`, `opencode`, `cursor`, `pi` or `generic`. Aliases: `agy`, `claude-code`, `open-code`, `cursor-agent` and `cursor-cli` (= cursor), `pi-coding-agent`, `openai` (= codex), `custom` (= generic). If omitted: the preset named like the agent, otherwise `generic`. `gemini` was removed in v0.2.1 and is now an error. |
 | `command` | Binary to run (name on `PATH` or a path; `~` and `$VARS` expanded). Required for `generic`. |
 | `args` | Full argument template; replaces the preset's. |
 | `extra_args` | Inserted at `{{extra_args}}`, or appended if the template has none. |
@@ -668,6 +686,9 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
 | `doctor` shows `AUTH missing` | Run `council login <agent>`, or set the API key environment variable the CLI expects. |
 | `doctor` shows `AUTH unknown` for a generic agent | It has no `status_args`. Add them, or run `council doctor --probe <agent>`. |
 | `doctor` shows agy `missing` with "Please sign in to view available models" | Run `council login agy` and sign in. If you did sign in, the OS keyring may be locked (SSH on macOS, no D-Bus session on Linux); see Antigravity's troubleshooting page. |
+| `doctor` shows cursor `missing` with "Authentication required" | Run `council login cursor` (or `NO_OPEN_BROWSER=1 council login cursor` over SSH), or set `CURSOR_API_KEY`. |
+| A cursor turn fails with "Workspace Trust Required" | You replaced `args` and dropped `--trust`. Put it back, or trust the directory by running `cursor-agent` there once. |
+| `doctor` shows pi `missing` with "no provider configured" | Run `council login pi` and use `/login`, or export a provider key such as `ANTHROPIC_API_KEY`. pi needs Node.js 22.19 or later. |
 | `agent "gemini": the gemini harness was removed …` | Gemini CLI is deprecated and its adapter is gone. Change the agent to `harness: antigravity` (and remove `gemini` from `defaults.agents`), or drive it with `harness: generic`. |
 | `<agent>: timed out: context deadline exceeded` | The turn took longer than the agent's `timeout`. Raise `timeout:` for that agent or in `defaults`. `--timeout` can only make it shorter. |
 | `<agent>: <cmd> exited: exit status 1: …` | The CLI failed. The message ends with the last 800 characters of its stderr. Run the line shown by `council agents` by hand with a short prompt. |
@@ -689,13 +710,16 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
 
 ## Limitations
 
-* The built-in flags follow each CLI's documentation as of October 2026, but
-  they were tested against stand-ins, not the real binaries. If a CLI changes
-  its flags, override `args` in the config.
+* The built-in flags follow each CLI's documentation as of October 2026. The
+  tests use stand-ins; agy, opencode, cursor-agent and pi were also run for
+  real on a machine without accounts (help, version, signed-out status), and
+  pi completed a full run against a local test model. If a CLI changes its
+  flags, override `args` in the config.
 * Agents are told not to modify files or run commands that change anything,
-  and Codex runs with `--sandbox read-only` and OpenCode with its read-only
-  Plan agent. Claude Code and Antigravity keep their own permission defaults; in headless mode those deny
-  tools that need approval. Tighten them with `extra_args`. Agents run in the
+  and Codex runs with `--sandbox read-only`, OpenCode with its read-only
+  Plan agent, Cursor in Ask mode and pi with only its read-only tools.
+  Claude Code and Antigravity keep their own permission defaults; in headless
+  mode those deny tools that need approval. Tighten them with `extra_args`. Agents run in the
   current directory (or `workdir`) and may read files there.
 * Every turn is a fresh, stateless CLI call that carries the whole transcript
   in its prompt, so long discussions cost tokens and time. Use fewer rounds,
@@ -710,7 +734,8 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
   by token.
 * `agy` has no auth-status command; `doctor` uses `agy models`, which proves
   there is a session but not that a GEMINI_API_KEY is valid. OpenCode can run
-  without any account, so its status is always `ok`. Use `doctor --probe` for
+  without any account, so its status is always `ok`. pi's `--list-models`
+  shows that a key is present, not that it works. Use `doctor --probe` for
   a definite answer.
 * On Windows a timeout kills the CLI process but not its children.
 * `--timeout` can shorten turns but not extend them past an agent's `timeout`.
