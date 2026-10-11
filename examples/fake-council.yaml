@@ -1,0 +1,32 @@
+# Demo config: three fake agents built on the generic harness, so council can
+# be tried without any real LLM CLI installed.
+#   council ask --config examples/fake-council.yaml --verbose "What is 6 * 7?"
+# Paths are relative to the directory you run council from.
+defaults:
+  agents: [alpha, beta, gamma]
+  rounds: 3
+  moderator: majority
+  timeout: 30s
+
+agents:
+  alpha:
+    harness: generic
+    command: ./examples/fake-agent.sh
+    args: ["alpha", "42", "follow"]
+    prompt_mode: stdin
+    output: text
+  beta:
+    harness: generic
+    command: ./examples/fake-agent.sh
+    args: ["beta", "42", "stubborn"]
+    prompt_mode: stdin
+  gamma:
+    harness: generic
+    command: ./examples/fake-agent.sh
+    args: ["gamma", "41", "follow", "0.2"]
+    prompt_mode: stdin
+  judge:
+    harness: generic
+    command: ./examples/fake-agent.sh
+    args: ["judge", "n/a"]
+    prompt_mode: stdin

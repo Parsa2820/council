@@ -344,7 +344,7 @@ func livePrinter(w io.Writer) func(chat.Event) {
 			if m.Role == chat.RoleModerator {
 				label = "moderator " + m.Agent
 			}
-			fmt.Fprintf(w, "\n▶ %s (%s)\n", label, m.Duration.Round(10*time.Millisecond))
+			fmt.Fprintf(w, "\n▶ %s (%s)\n", label, m.Duration.Round(time.Millisecond))
 			if !m.OK() {
 				fmt.Fprintf(w, "  ✗ error: %s\n", m.Error)
 				return
