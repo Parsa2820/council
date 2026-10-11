@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Check reports whether the harness CLI is installed and signed in. It never
@@ -61,8 +62,11 @@ func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	if len(s) > 200 {
-		s = s[:200] + "…"
+	if n := 200; len(s) > n {
+		for n > 0 && !utf8.RuneStart(s[n]) {
+			n-- // do not split a multi-byte character
+		}
+		s = s[:n] + "…"
 	}
 	return s
 }

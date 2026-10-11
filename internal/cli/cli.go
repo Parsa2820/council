@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Parsa2820/council/internal/chat"
 	"github.com/Parsa2820/council/internal/config"
@@ -485,6 +486,9 @@ func dash(s string) string {
 func oneLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > n {
+		for n > 0 && !utf8.RuneStart(s[n]) {
+			n-- // do not split a multi-byte character
+		}
 		s = s[:n] + "…"
 	}
 	return s

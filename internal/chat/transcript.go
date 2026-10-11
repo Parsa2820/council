@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Parsa2820/council/internal/consensus"
 )
@@ -84,7 +85,7 @@ func (t *Transcript) Discussion(upTo, maxChars int) string {
 		}
 		body := m.Content
 		if maxChars > 0 && len(body) > maxChars {
-			body = body[:maxChars] + "\n…[truncated]"
+			body = truncate(body, maxChars) + "\n…[truncated]"
 		}
 		sb.WriteString(strings.TrimSpace(body))
 		sb.WriteString("\n")
@@ -140,9 +141,21 @@ func (t *Transcript) Markdown(res *Result) string {
 func oneLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > n {
-		s = s[:n] + "…"
+		s = truncate(s, n) + "…"
 	}
 	return s
+}
+
+// truncate returns at most the first n bytes of s without splitting a
+// multi-byte UTF-8 character.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // NewTranscriptFrom rebuilds a Transcript from a Result (e.g. for rendering).

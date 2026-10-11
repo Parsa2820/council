@@ -11,6 +11,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - `council ask` no longer exits 0 with an empty answer when no agent produced
   a vote block and the moderator failed; it now reports an error.
+- Truncated text (`max_transcript_chars`, error excerpts, `doctor` details)
+  no longer cuts a multi-byte UTF-8 character in half.
 
 ## [0.1.0] - 2026-10-10
 

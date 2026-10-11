@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // CommandHarness runs a CLI as a subprocess according to a Spec.
@@ -297,7 +298,11 @@ func tail(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return "…" + s[len(s)-n:]
+	i := len(s) - n
+	for i < len(s) && !utf8.RuneStart(s[i]) {
+		i++ // do not split a multi-byte character
+	}
+	return "…" + s[i:]
 }
 
 func sanitize(s string) string {
