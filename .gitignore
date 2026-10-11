@@ -1,5 +1,22 @@
+# Build output: release binaries are published, never committed.
 /dist/
 /council
+/council.exe
 *.exe
+
+# Release archives (make zip / make source-zip write them to ../, but keep
+# any copies out of the repository too).
+*.zip
+council-binaries.zip
+council-source.zip
+
+# Go test and profiling artifacts
 *.test
 *.out
+*.prof
+
+# Editors and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
