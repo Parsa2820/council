@@ -3,8 +3,8 @@
 `council` puts several LLM coding CLIs ("harnesses") into one group chat and
 returns the group's **consensus answer**.
 
-You ask a question once. OpenAI Codex, Claude Code, Gemini CLI, Google
-Antigravity, and any other CLI you configure each answer it on their own.
+You ask a question once. OpenAI Codex, Claude Code, Google Antigravity,
+OpenCode, and any other CLI you configure each answer it on their own.
 Then they read each other's answers, critique them and revise. Every turn ends
 with a small JSON vote. The chat stops when everyone agrees, or after a fixed
 number of rounds. The final answer comes from that consensus, a majority vote,
@@ -15,7 +15,7 @@ $ council ask "Is sync.RWMutex faster than sync.Mutex for a read-heavy map in Go
 …the supporting agent's explanation…
 
 Final answer: Usually yes for read-heavy workloads with long critical sections, …
-── consensus after 2 round(s) · method: unanimous · for: codex, claude, gemini
+── consensus after 2 round(s) · method: unanimous · for: codex, claude, agy
 ```
 
 * **No API keys of its own.** council runs the CLIs you already have installed
@@ -53,8 +53,8 @@ flowchart TD
     subgraph Round1 [Round 1: independent answers]
         R1{{Run every agent in parallel}} --> A1[codex exec]
         R1 --> B1[claude -p]
-        R1 --> C1[gemini -p]
-        R1 --> D1[agy / generic CLI]
+        R1 --> C1[agy]
+        R1 --> D1[opencode run / generic CLI]
     end
 
     A1 & B1 & C1 & D1 --> V{Parse JSON votes.<br/>Consensus?}
@@ -103,12 +103,13 @@ flowchart TD
 |---|---|---|---|
 | `codex` | OpenAI Codex CLI | `codex exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message <tmp> -` (prompt on stdin) | the `--output-last-message` file |
 | `claude` | Claude Code | `claude -p --output-format json --no-session-persistence` (prompt on stdin) | `.result`; `.is_error` marks failure |
-| `gemini` | Gemini CLI | `gemini --output-format json -p "Respond to the request above (provided on standard input)."` (prompt on stdin) | `.response`; `.error` marks failure |
 | `agy` (kind `antigravity`) | Google Antigravity CLI | `agy --input-format stream-json --output-format stream-json`, prompt sent as one `{"event":"user","message":{"content":…}}` line on stdin | `result.response` of the last event that has it; `result.error` marks failure |
+| `opencode` | OpenCode | `opencode run --format json --agent plan` (prompt on stdin; the read-only Plan agent) | `part.text` of the last `text` event; an `error` event marks failure |
 | anything else | `generic` | your own command template | text, a JSON path, or a JSON Lines path |
 
 [docs/HARNESSES.md](docs/HARNESSES.md) describes each adapter in detail and how
-to add your own.
+to add your own. The Gemini CLI adapter was removed in v0.2.1 because Gemini
+CLI is deprecated; use `agy` (Google's Antigravity CLI) instead.
 
 ## Install
 
@@ -180,7 +181,7 @@ Notes for Windows:
 
 * The config file is `%USERPROFILE%\.config\council\config.yaml`, unless you set
   `COUNCIL_CONFIG` or `XDG_CONFIG_HOME`.
-* CLIs installed with npm are `.cmd` shims (`claude.cmd`, `gemini.cmd`, …). Go
+* CLIs installed with npm are `.cmd` shims (`claude.cmd`, `opencode.cmd`, …). Go
   finds them through `PATHEXT`. If `council doctor` reports one as missing,
   set `command:` to its full path in the config.
 * When a turn times out, council kills the CLI process. On Windows it cannot
@@ -216,7 +217,7 @@ make zip        # dist/ zipped into ../council-binaries.zip
 ```
 
 The unit tests need no LLM CLI, network or credentials: the built-in
-harnesses are tested against fake `codex`, `claude`, `gemini` and `agy`
+harnesses are tested against fake `codex`, `claude`, `agy` and `opencode`
 scripts. Statement coverage is 99.7% on Linux and macOS (every package at
 99% or more) and 83.5% on Windows, which skips the shell-script tests; see [CONTRIBUTING.md](CONTRIBUTING.md#tests) for details.
 
@@ -233,8 +234,8 @@ time of writing:
 ```sh
 npm install -g @openai/codex            # codex
 npm install -g @anthropic-ai/claude-code   # claude
-npm install -g @google/gemini-cli       # gemini
-# agy: install Google Antigravity's CLI as described in its documentation
+curl -fsSL https://antigravity.google/cli/install.sh | bash   # agy (Antigravity CLI)
+npm install -g opencode-ai              # opencode
 ```
 
 ## Quick start
@@ -249,12 +250,12 @@ council doctor --probe       # send a one-line prompt through each one
 council ask "What is the time complexity of Go's sort.Slice?"
 ```
 
-By default `council ask` uses `codex`, `claude` and `gemini`, up to 3 rounds,
+By default `council ask` uses `codex`, `claude` and `agy`, up to 3 rounds,
 and a majority vote. Pick different agents with `--agents`:
 
 ```sh
-council ask --agents claude,gemini "…"
-council ask --agents codex,claude,gemini,agy --rounds 4 --moderator claude "…"
+council ask --agents claude,opencode "…"
+council ask --agents codex,claude,agy,opencode --rounds 4 --moderator claude "…"
 ```
 
 Common ways to pass the prompt:
@@ -282,8 +283,8 @@ harness afterwards.
 |---|---|---|---|
 | `codex` | `codex login` (ChatGPT sign-in in the browser) | `-- --device-auth` on a headless machine; `-- --with-api-key` to read an API key from stdin | `codex login status`, exit 0 = signed in |
 | `claude` | `claude auth login` | `-- --console` (Anthropic Console / API billing), `-- --sso` | `claude auth status`, exit 0 = signed in |
-| `gemini` | `gemini` (interactive): choose **Login with Google**, finish in the browser, then type `/quit` | none | no status command exists. Signed in if `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set, `GOOGLE_GENAI_USE_VERTEXAI=true`, or `~/.gemini/oauth_creds.json` exists |
-| `agy` | `agy` (interactive): sign in through the OS keyring / Google sign-in (prints a URL over SSH), then type `/quit` | none | no status command exists. Signed in if `~/.gemini/antigravity-cli/settings.json` has `"modelProvider": "gemini"` and `GEMINI_API_KEY` is set, or if `AGY_ADC_AUTH=true`; otherwise `unknown` |
+| `agy` | `agy` (interactive): sign in with Google (prints a URL over SSH), then type `/quit`; the session goes to the OS keyring | none | `agy models` (no tokens used): it lists models when signed in and fails with "Please sign in to view available models" when not |
+| `opencode` | `opencode auth login` (pick a provider, paste a key or sign in) | `-- --provider anthropic` | `opencode auth list`: counts stored credentials and provider env vars. Always `ok`, because OpenCode's free models need no account; the detail says when no provider is configured |
 | generic | `<command> <login_args…>` if `login_args` is set | anything after `--` | `<command> <status_args…>`, exit 0 = signed in, if `status_args` is set; otherwise `unknown` |
 
 Examples:
@@ -292,8 +293,8 @@ Examples:
 council login codex -- --device-auth
 printenv OPENAI_API_KEY | council login codex -- --with-api-key
 council login claude -- --console
-export GEMINI_API_KEY=…          # alternative to `council login gemini`
-council doctor --probe gemini agy   # prove that gemini and agy really answer
+council login opencode -- --provider anthropic
+council doctor --probe agy opencode   # prove that agy and opencode really answer
 ```
 
 An `unknown` auth state is not an error. Use `council doctor --probe` for a
@@ -314,7 +315,9 @@ the agents (each shows whether it is installed and signed in, like
 The group chat streams in round by round, with each agent's vote and
 confidence, and ends with a consensus card showing the answer, the method and
 who agreed or dissented. You can cancel a run and download the transcript as
-Markdown. The page follows the system's light or dark theme.
+Markdown. The page follows the system's light or dark theme. Any configured
+agent can be the moderator, whether or not it takes part; if it fails, the
+consensus card says so and shows the majority vote instead.
 
 It is one binary with the page embedded: no Node, no build step, nothing
 loaded from the internet. Try it with the fake agents:
@@ -389,8 +392,8 @@ stderr gets:
 
 ```
 ── consensus after 2 round(s) · method: unanimous · for: alpha, beta, gamma
-── no full consensus after 3 round(s) · method: majority · for: codex, claude · against: gemini
-── consensus after 2 round(s) · method: moderator (claude) · for: codex, claude, gemini
+── no full consensus after 3 round(s) · method: majority · for: codex, claude · against: agy
+── consensus after 2 round(s) · method: moderator (claude) · for: codex, claude, agy
 note: moderator claude failed (…); fell back to majority vote
 ```
 
@@ -452,11 +455,11 @@ from an output file) and the resolved command line, with `<prompt>`,
 `<prompt_file>` and `<output_file>` standing in for the per-run values:
 
 ```
-AGENT   KIND         PROMPT  OUTPUT                 COMMAND LINE
-agy     antigravity  stdin   jsonl:result.response  agy --input-format stream-json --output-format stream-json
-claude  claude       stdin   json:result            claude -p --output-format json --no-session-persistence
-codex   codex        stdin   text (file)            codex exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message <output_file> -
-gemini  gemini       stdin   json:response          gemini --output-format json -p Respond to the request above (provided on standard input).
+AGENT     KIND         PROMPT  OUTPUT                 COMMAND LINE
+agy       antigravity  stdin   jsonl:result.response  agy --input-format stream-json --output-format stream-json
+claude    claude       stdin   json:result            claude -p --output-format json --no-session-persistence
+codex     codex        stdin   text (file)            codex exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message <output_file> -
+opencode  opencode     stdin   jsonl:part.text        opencode run --format json --agent plan
 ```
 
 ### `council serve`
@@ -494,8 +497,8 @@ A complete, annotated example:
 ```yaml
 defaults:
   # Agents used when --agents is not given. Built-in names (codex, claude,
-  # gemini, agy, antigravity) work even if they are not listed under agents:.
-  agents: [codex, claude, gemini]
+  # agy, antigravity, opencode) work even if they are not listed under agents:.
+  agents: [codex, claude, agy]
   # Maximum rounds (>= 1). Round 1 = independent answers.
   rounds: 3
   # "majority" for a plain vote, or the name of an agent that writes the
@@ -518,12 +521,14 @@ agents:
     harness: claude
     model: sonnet
     extra_args: ["--permission-mode", "plan"]
-  gemini:
-    harness: gemini
-    env:
-      GEMINI_API_KEY: $MY_GEMINI_KEY   # $VARS are expanded when the CLI starts
   agy:
     harness: antigravity          # alias: agy
+    model: gemini-3.1-pro-high    # see `agy models`
+  opencode:
+    harness: opencode
+    model: anthropic/claude-sonnet-4-5   # provider/model, see `opencode models`
+    env:
+      ANTHROPIC_API_KEY: $MY_ANTHROPIC_KEY   # $VARS are expanded when the CLI starts
 
   # The same CLI can join twice with different settings.
   claude-opus:
@@ -560,7 +565,7 @@ agents:
 
 | Field | Meaning |
 |---|---|
-| `harness` | `codex`, `claude`, `gemini`, `antigravity` or `generic`. Aliases: `agy`, `claude-code`, `gemini-cli`, `openai` (= codex), `custom` (= generic). If omitted: the preset named like the agent, otherwise `generic`. |
+| `harness` | `codex`, `claude`, `antigravity`, `opencode` or `generic`. Aliases: `agy`, `claude-code`, `open-code`, `openai` (= codex), `custom` (= generic). If omitted: the preset named like the agent, otherwise `generic`. `gemini` was removed in v0.2.1 and is now an error. |
 | `command` | Binary to run (name on `PATH` or a path; `~` and `$VARS` expanded). Required for `generic`. |
 | `args` | Full argument template; replaces the preset's. |
 | `extra_args` | Inserted at `{{extra_args}}`, or appended if the template has none. |
@@ -661,7 +666,9 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
 | `council: unknown agent "x" (define it under \`agents:\` in …)` (exit 2) | The name is neither in the config nor a built-in. Check `council agents`, or add it under `agents:`. |
 | `doctor` shows `INSTALLED no` / `not found on PATH` | Install the CLI, or set `command:` to its full path. On Windows try the `.cmd` path, e.g. `C:\Users\you\AppData\Roaming\npm\claude.cmd`. |
 | `doctor` shows `AUTH missing` | Run `council login <agent>`, or set the API key environment variable the CLI expects. |
-| `doctor` shows `AUTH unknown` for gemini, agy or a generic agent | The CLI has no status command. Run `council doctor --probe <agent>`. |
+| `doctor` shows `AUTH unknown` for a generic agent | It has no `status_args`. Add them, or run `council doctor --probe <agent>`. |
+| `doctor` shows agy `missing` with "Please sign in to view available models" | Run `council login agy` and sign in. If you did sign in, the OS keyring may be locked (SSH on macOS, no D-Bus session on Linux); see Antigravity's troubleshooting page. |
+| `agent "gemini": the gemini harness was removed …` | Gemini CLI is deprecated and its adapter is gone. Change the agent to `harness: antigravity` (and remove `gemini` from `defaults.agents`), or drive it with `harness: generic`. |
 | `<agent>: timed out: context deadline exceeded` | The turn took longer than the agent's `timeout`. Raise `timeout:` for that agent or in `defaults`. `--timeout` can only make it shorter. |
 | `<agent>: <cmd> exited: exit status 1: …` | The CLI failed. The message ends with the last 800 characters of its stderr. Run the line shown by `council agents` by hand with a short prompt. |
 | `output is not valid JSON` | The CLI printed something besides one JSON document (a banner, a progress line). Use `output: jsonl` (non-JSON lines are skipped) or `output: text`. |
@@ -686,8 +693,8 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
   they were tested against stand-ins, not the real binaries. If a CLI changes
   its flags, override `args` in the config.
 * Agents are told not to modify files or run commands that change anything,
-  and Codex runs with `--sandbox read-only`. Claude Code, Gemini CLI and
-  Antigravity keep their own permission defaults; in headless mode those deny
+  and Codex runs with `--sandbox read-only` and OpenCode with its read-only
+  Plan agent. Claude Code and Antigravity keep their own permission defaults; in headless mode those deny
   tools that need approval. Tighten them with `extra_args`. Agents run in the
   current directory (or `workdir`) and may read files there.
 * Every turn is a fresh, stateless CLI call that carries the whole transcript
@@ -701,8 +708,10 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
   which costs one more turn.
 * Live output is per message: each reply prints when it is complete, not token
   by token.
-* `gemini` and `agy` have no non-interactive auth-status command, so `doctor`
-  infers their status. Use `doctor --probe` for a definite answer.
+* `agy` has no auth-status command; `doctor` uses `agy models`, which proves
+  there is a session but not that a GEMINI_API_KEY is valid. OpenCode can run
+  without any account, so its status is always `ok`. Use `doctor --probe` for
+  a definite answer.
 * On Windows a timeout kills the CLI process but not its children.
 * `--timeout` can shorten turns but not extend them past an agent's `timeout`.
 * There is no memory between `council ask` runs.

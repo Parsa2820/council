@@ -113,7 +113,7 @@ all of these hold (`consensus.Agreement`):
    the chat immediately.
 
 Failed agents (timeouts, crashes, unparsable output) are not responders. They
-neither block nor count toward consensus. For example, if `gemini` times out
+neither block nor count toward consensus. For example, if `opencode` times out
 and `codex` and `claude` agree, that is a consensus of two.
 
 On consensus the method is `unanimous`, `converged` is `true`, the supporters
@@ -146,21 +146,21 @@ If no agent ever voted and there is no moderator, the run fails with
 
 ### Tie-break example
 
-Latest votes, in agent order `codex, claude, gemini, agy`:
+Latest votes, in agent order `codex, claude, opencode, agy`:
 
 | Agent | `final_answer` | `confidence` |
 |---|---|---|
 | codex | `Use a channel` | 0.7 |
 | claude | `Use a mutex` | 0.9 |
-| gemini | `use a mutex.` | 0.5 |
+| opencode | `use a mutex.` | 0.5 |
 | agy | `Use a channel.` | 0.6 |
 
 * Groups: `use a channel` = {codex, agy}, summed confidence 1.3;
-  `use a mutex` = {claude, gemini}, summed confidence 1.4.
+  `use a mutex` = {claude, opencode}, summed confidence 1.4.
 * Both have 2 supporters, so the higher summed confidence wins: **use a mutex**.
 * The answer text comes from the most confident supporter, claude:
   `Use a mutex`.
-* Result: method `majority`, supporters `claude, gemini`, dissenters
+* Result: method `majority`, supporters `claude, opencode`, dissenters
   `codex, agy`.
 
 Had the sums also been equal, `use a channel` would have won, because its
@@ -394,19 +394,19 @@ same round would have been a consensus.
 
 ### An agent fails
 
-Three agents, and gemini times out in round 2. In round 2, codex and claude both
+Three agents, and opencode times out in round 2. In round 2, codex and claude both
 vote `B` with `agree: true`. The responders are codex and claude, both voted,
 2 ≥ quorum 2, so this is a consensus on `B` with supporters codex and claude.
-gemini's round-1 vote is not used, because the consensus decision only
+opencode's round-1 vote is not used, because the consensus decision only
 considers the round that converged. With `--verbose` you see
-`✗ error: gemini: timed out: context deadline exceeded`.
+`✗ error: opencode: timed out: context deadline exceeded`.
 
 ### An agent forgets the vote
 
-Round 2: codex and claude vote `B` with `agree: true`, and gemini replies with
-prose but no vote block. gemini is a responder without a ballot, so the round
+Round 2: codex and claude vote `B` with `agree: true`, and opencode replies with
+prose but no vote block. opencode is a responder without a ballot, so the round
 cannot be a consensus. If this repeats in the last round, the majority tally
-uses gemini's latest vote from an earlier round, if it has one.
+uses opencode's latest vote from an earlier round, if it has one.
 
 ## Tuning
 

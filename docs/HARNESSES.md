@@ -5,7 +5,7 @@ get an answer back from. Each participant in the chat (an **agent**) is a named
 harness configuration. You can have several agents on the same harness, for
 example two Claude Code agents with different models.
 
-council ships four built-in adapters and a `generic` one that can drive almost
+council ships four built-in adapters (codex, claude, agy and opencode) and a `generic` one that can drive almost
 any CLI. All of them run on the same code (`harness.CommandHarness`): a
 built-in adapter is just a preset of the fields you could also write yourself
 in the [config](CONFIGURATION.md).
@@ -14,8 +14,9 @@ in the [config](CONFIGURATION.md).
 - [Built-in harnesses](#built-in-harnesses)
   - [codex: OpenAI Codex CLI](#codex-openai-codex-cli)
   - [claude: Claude Code](#claude-claude-code)
-  - [gemini: Gemini CLI](#gemini-gemini-cli)
   - [agy: Google Antigravity CLI](#agy-google-antigravity-cli)
+  - [opencode: OpenCode](#opencode-opencode)
+  - [Gemini CLI (removed)](#gemini-cli-removed)
 - [Overriding a built-in harness](#overriding-a-built-in-harness)
 - [Adding a custom harness](#adding-a-custom-harness)
   - [Prompt as an argument](#prompt-as-an-argument)
@@ -97,20 +98,6 @@ Claude Code keeps its own permission settings. In print mode, tools that need
 approval are denied. To be stricter, add for example
 `extra_args: ["--permission-mode", "plan"]`.
 
-### gemini: Gemini CLI
-
-| | |
-|---|---|
-| Kind / aliases | `gemini` / `gemini-cli` |
-| Command | `gemini --output-format json [--model M] [extra_args…] -p "Respond to the request above (provided on standard input)."` |
-| Prompt | stdin; the short `-p` text is appended to it by Gemini CLI |
-| Answer | JSON document on stdout; answer = `response`; failure if `error` is present and non-empty |
-| Login | `council login gemini` runs `gemini` interactively: choose **Login with Google**, finish in the browser, then type `/quit`. Or set `GEMINI_API_KEY`. |
-| Status | No status subcommand. `doctor` reports `ok` if `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set, if `GOOGLE_GENAI_USE_VERTEXAI=true`, or if `~/.gemini/oauth_creds.json` exists; otherwise `missing`. |
-
-The prompt goes on stdin rather than in `-p` so that long transcripts never hit
-the operating system's argument-length limit.
-
 ### agy: Google Antigravity CLI
 
 | | |
@@ -119,14 +106,64 @@ the operating system's argument-length limit.
 | Command | `agy --input-format stream-json --output-format stream-json [--model M] [extra_args…]` |
 | Prompt | stdin, wrapped as one JSON event line: `{"event":"user","message":{"content":<prompt as a JSON string>}}` |
 | Answer | JSON Lines on stdout; the last line that has `result.response` gives the answer; a truthy `result.error` fails the turn |
-| Login | `council login agy` runs `agy` interactively. It signs in through the OS keyring or a Google sign-in (it prints a URL when you are on SSH). Type `/quit` when done. For CI, use `GEMINI_API_KEY` with `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, or Application Default Credentials with `AGY_ADC_AUTH=true`. |
-| Status | No status command. `doctor` reports `ok` if the settings file says `modelProvider: gemini` and `GEMINI_API_KEY` is set (`missing` if the key is not set), or if `AGY_ADC_AUTH=true`; otherwise `unknown`. Use `council doctor --probe agy`. |
+| Login | `council login agy` runs `agy` interactively: sign in with Google (on SSH it prints a URL to open), then type `/quit`. The session is stored in the OS keyring (Keychain, Secret Service over D-Bus, or Windows Credential Manager). For CI, export `GEMINI_API_KEY` and set `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`. |
+| Status | `agy models`. It costs no tokens and needs a session: signed in, it lists the models and exits 0 (`ok`, "signed in (N models available)"); signed out, it exits 1 with `Error: Please sign in to view available models…` (`missing`, with that message). In API-key mode it fails the same way when `GEMINI_API_KEY` is not set. |
 
 The stream-json session mode reads the prompt from stdin, so it avoids argument
 length limits. Each turn ends with an event such as
 `{"event":"result","result":{"status":"…","response":"…"}}`.
 To use the simpler print mode instead, see the
 [override example](#overriding-a-built-in-harness).
+
+How the status check was chosen (agy 1.3.3, October 2026): `agy --help` lists
+no `auth`, `login`, `logout`, `status` or `whoami` subcommand, and the
+[install and auth docs](https://antigravity.google/docs/cli/install/) say the
+token lives in the OS keyring, with no file that shows a sign-in (the
+`~/.gemini/antigravity-cli/` directory only holds settings, logs, caches and
+conversations, signed in or not). `agy models` is the cheapest command that
+needs the session: signed out it fails at once with the message above, and its
+log says `You are not logged into Antigravity`. Two consequences: when the
+keyring is locked (for example over SSH on macOS, or with no D-Bus session on
+Linux), agy cannot read the token, so `doctor` most likely reports `missing`
+even though you did sign in (unlock the keyring as the
+[troubleshooting page](https://antigravity.google/docs/cli/troubleshooting/)
+describes); and in
+API-key mode agy only checks that `GEMINI_API_KEY` is set, not that it is
+valid. `council doctor --probe agy` sends a real prompt when you need
+certainty.
+
+### opencode: OpenCode
+
+| | |
+|---|---|
+| Kind / aliases | `opencode` / `open-code` |
+| Command | `opencode run --format json --agent plan [--model provider/model] [extra_args…]` |
+| Prompt | stdin (`opencode run` with no message arguments reads the message from stdin) |
+| Answer | JSON Lines events on stdout; the last `{"type":"text","part":{"text":…}}` event is the answer; `{"type":"error","error":{"data":{"message":…}}}` fails the turn |
+| Login | `council login opencode` → `opencode auth login` (pick a provider and paste a key or sign in). `-- --provider anthropic` skips the provider list. Keys are stored in `~/.local/share/opencode/auth.json`. |
+| Status | `opencode auth list`, which lists stored credentials and provider environment variables (such as `ANTHROPIC_API_KEY`) and always exits 0. `doctor` reports `ok` with the counts. With none it still reports `ok`, because OpenCode's free OpenCode Zen models work without an account, and says so in the detail. |
+
+`run` is OpenCode's non-interactive mode. `--format json` prints raw JSON
+events (`step_start`, `text`, `tool_use`, `step_finish`, `error`) instead of
+formatted text. When the agent uses tools, a turn has several steps; the text
+of the last one is the final answer. `--agent plan` selects the built-in
+read-only Plan agent, so OpenCode does not edit files or run shell commands
+(drop it with an `args` override if you want the Build agent). `--model`
+takes `provider/model`, as listed by `opencode models`, for example
+`anthropic/claude-sonnet-4-5`; without it OpenCode uses its configured
+default model. `extra_args: ["--variant", "high"]` sets the reasoning effort
+on providers that support it.
+
+Checked against opencode-ai 1.19.0 from npm and the
+[CLI docs](https://opencode.ai/docs/cli/).
+
+### Gemini CLI (removed)
+
+The `gemini` harness (Gemini CLI) was removed in council v0.2.1 because Gemini
+CLI is deprecated. A config that still says `harness: gemini` (or
+`gemini-cli`) fails to load with a message saying so. Use Google's
+Antigravity CLI instead (`harness: antigravity`, the `agy` agent), or drive
+any CLI you like with `harness: generic`.
 
 ## Overriding a built-in harness
 
@@ -151,10 +188,14 @@ agents:
     harness: claude
     model: opus
 
-  gemini:
-    harness: gemini
+  agy:
+    harness: antigravity
     env:
-      GEMINI_API_KEY: $COUNCIL_GEMINI_KEY
+      GEMINI_API_KEY: $COUNCIL_GEMINI_KEY   # with "modelProvider": "gemini" in agy's settings.json
+
+  opencode:
+    harness: opencode
+    model: anthropic/claude-sonnet-4-5   # -> --model anthropic/claude-sonnet-4-5
 
   # Antigravity in plain print mode instead of the stream-json session.
   agy-print:
@@ -356,6 +397,7 @@ agents:
 
 The built-in `agy` adapter is a complete example: it uses `stdin_template` to
 send one JSON event and `output: jsonl` with `json_path: result.response`.
+The `opencode` adapter reads `part.text` from the last `text` event.
 
 ### Answer written to a file
 

@@ -7,6 +7,53 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Web UI: the moderator choice could be lost. The agent checkboxes and the
+  moderator list were rebuilt every time `/api/agents` answered (twice per
+  page load and on every status refresh), and with real CLIs those checks
+  take seconds, so a moderator picked (or a dropdown left open) in the
+  meantime could be reset. The list is now built once and only the status
+  badges are updated; the choice is kept across status refreshes and
+  checkbox changes, and any configured agent can moderate, whether or not
+  it takes part. If the moderator fails, the consensus card now says so
+  and shows that the majority vote stands, instead of a muted note.
+- Web UI and `council doctor`: `agy` always showed "status unknown". Its
+  status is now checked with `agy models`, which costs no tokens, lists the
+  models when signed in and fails with "Please sign in to view available
+  models" when not, so agy shows `ready` or `signed out` with the reason.
+
+### Added
+
+- OpenCode harness (`harness: opencode`, alias `open-code`): runs
+  `opencode run --format json --agent plan` (the read-only Plan agent) with
+  the prompt on stdin and reads the last `text` event; `model:` becomes
+  `--model provider/model`. `council login opencode` runs
+  `opencode auth login`, and status uses `opencode auth list`. OpenCode
+  works without an account (free OpenCode Zen models), so it is reported
+  as signed in, with a note when no provider is configured.
+- Web UI: "checking…" badges while status checks run, the reason an agent
+  is not ready, and a 3-minute status cache (`GET /api/agents?refresh=1`
+  and the **refresh status** button bypass it).
+- `scripts/webui-check.mjs`: an optional Playwright check of the web UI in
+  Chromium, Firefox and WebKit (moderator selection and use).
+
+### Changed
+
+- The default agents (`defaults.agents` and `council init`) are now
+  `codex`, `claude` and `agy`.
+- Setting `status_args` on an agent replaces the preset's status check
+  entirely, including how its output is read.
+
+### Removed
+
+- The Gemini CLI harness (`harness: gemini`, alias `gemini-cli`), its
+  login and credential checks and its fake CLI, because Gemini CLI is
+  deprecated. A config that still uses it fails to load with a message
+  saying to switch to `harness: antigravity` (Google's Antigravity CLI,
+  `agy`) or `harness: generic`. An agent named `gemini` with another
+  harness still works.
+
 ## [0.2.0] - 2026-10-10
 
 ### Added

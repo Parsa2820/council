@@ -33,11 +33,16 @@ processes are killed, as with `council ask`.
 * **Prompt**: a text area. Ctrl+Enter (Cmd+Enter on macOS) runs it.
 * **Agents**: one checkbox per configured agent, ticked for `defaults.agents`.
   Each shows its harness kind and the same install and sign-in status as
-  `council doctor` (`ready`, `not installed`, `signed out`, `status unknown`).
-  The status checks run in the background; **refresh status** runs them
-  again.
-* **Rounds**, **Moderator** (majority vote or any configured agent) and
-  **Turn timeout** (`90s`, `5m`; empty uses each agent's own timeout).
+  `council doctor` (`checking…`, `ready`, `not installed`, `signed out`,
+  `status unknown`); an agent that is not ready also shows why, for example
+  agy's "Please sign in to view available models". The checks run in the
+  background and the results are cached for 3 minutes, so reloading the page
+  is fast; **refresh status** runs them again.
+* **Rounds**, **Moderator** and **Turn timeout** (`90s`, `5m`; empty uses
+  each agent's own timeout). The moderator list has "majority vote" and every
+  configured agent, whether or not it is ticked: an agent can moderate a chat
+  it does not take part in. The choice is kept when you tick or untick agents
+  and when the status refreshes.
 * **Loose** checkbox: the same as `council ask --loose`.
 * **Run**, **Cancel** and **Download transcript (.md)**. The download is the
   same Markdown as `council ask --transcript`.
@@ -46,7 +51,8 @@ processes are killed, as with `council ask`.
   turns show their error.
 * **Consensus card**: the final answer, how it was reached (unanimous,
   majority or moderator), who agreed and who dissented, and the
-  reasoning or moderator details.
+  reasoning or moderator details. If the chosen moderator fails (not signed
+  in, timed out), the card says so and shows that the majority vote stands.
 
 The page follows the operating system's light or dark setting and works on
 narrow screens. It is plain HTML, CSS and JavaScript embedded in the binary
@@ -92,7 +98,7 @@ TOKEN=$(curl -s http://127.0.0.1:8787/ | sed -n 's/.*council-token" content="\([
 |---|---|
 | `GET /` | The page. |
 | `GET /static/{app.js,style.css}` | Its script and stylesheet. |
-| `GET /api/agents` | Agents, defaults and limits. `?status=0` skips the install and sign-in checks. |
+| `GET /api/agents` | Agents, defaults and limits. `?status=0` skips the install and sign-in checks; `?refresh=1` ignores cached results. |
 | `POST /api/run` | Start a run. The response is a stream of Server-Sent Events. |
 | `POST /api/runs/{id}/cancel` | Cancel a run. `404` if no such run is active. |
 
@@ -110,14 +116,16 @@ an invalid config file).
      "path": "/usr/local/bin/codex", "version": "codex-cli 0.50.0",
      "auth": "ok", "detail": "Logged in using ChatGPT", "default": true}
   ],
-  "defaults": {"agents": ["codex", "claude", "gemini"], "rounds": 3,
+  "defaults": {"agents": ["codex", "claude", "agy"], "rounds": 3,
                "moderator": "majority", "timeout": "10m0s"},
   "limits": {"max_prompt_bytes": 200000, "max_agents": 12, "max_rounds": 10,
              "max_timeout_ns": 3600000000000}
 }
 ```
 
-`auth` is `ok`, `missing` or `unknown`. Default agents come first.
+`auth` is `ok`, `missing` or `unknown`. Default agents come first. Status
+results are cached per agent (name, kind, command and status command) for 3
+minutes; a check that timed out is not cached.
 
 ### `POST /api/run`
 

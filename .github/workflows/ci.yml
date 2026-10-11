@@ -40,7 +40,7 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # Tests that need /bin/sh (the fake codex/claude/gemini/agy CLIs in
+      # Tests that need /bin/sh (the fake codex/claude/agy/opencode CLIs in
       # internal/harness/testdata/fakecli and examples/fake-agent.sh) skip
       # themselves on Windows.
       - name: go test

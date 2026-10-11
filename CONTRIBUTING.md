@@ -90,7 +90,7 @@ and fails on Linux and macOS if the total drops below 90%.
 |---|---|---|
 | `cmd/council` | `run` (exit codes, streams), `isTerminal` (pipe, file, character device), `main` | in-process, with `exit` replaced |
 | `internal/consensus` | vote parsing (every fence spelling, bare JSON, aliases, broken blocks, last block wins, missing vote, confidence clamping), `StripVote`, the brace scanner, normalization, agreement, quorum, majority and tie-breaks | table-driven pure functions |
-| `internal/harness` | JSON paths, argument templating, `stdin_template`, spec validation and defaults, every prompt mode and output format, `error_path`, null and empty answers, non-zero exits, stderr tails, cancellation, timeouts that kill the whole process tree, env, workdir, doctor checks, the gemini and agy credential probes, login commands | the fake CLIs below, plus small generated shell scripts |
+| `internal/harness` | JSON paths, argument templating, `stdin_template`, spec validation and defaults, every prompt mode and output format, `error_path`, null and empty answers, non-zero exits, stderr tails, cancellation, timeouts that kill the whole process tree, env, workdir, doctor checks, the `agy models` and `opencode auth list` status parsers, removed kinds, login commands | the fake CLIs below, plus small generated shell scripts |
 | `internal/config` | durations, path resolution (`$COUNCIL_CONFIG`, `$XDG_CONFIG_HOME`, `config.yml`, `config`), load and parse errors, unknown fields, validation, preset overrides, `~` and `$VAR` expansion, `init` with and without `--force` | YAML snippets |
 | `internal/chat` | convergence, early stop in round 1, prompts and the moderator prompt, transcript rendering (`Discussion`, `Markdown`), event order, majority fallback, quorum, explicit agreement, moderator synthesis, fallback and replies without a vote, failing agents, abstentions, concurrency, turn timeouts, cancellation | in-process fakes (`harness.Func`) |
 | `internal/cli` | every command and flag of `ask`, `init`, `doctor`/`status` (table, `--json`, `--probe`), `login` (extra args, failures), `agents`, `serve` (flags, URL, `--open`, the non-loopback warning, shutdown, listener errors), `version`, `help`, exit codes, prompt sources, the live printer and result line | `examples/fake-agent.sh` through the generic harness, and the fake CLIs below; `serve` on port 0 with `openBrowser` and `listen` replaced |
@@ -102,7 +102,7 @@ there but covers less. CI runs the suite on Linux, macOS and Windows.
 ### The fake harness CLIs
 
 `internal/harness/testdata/fakecli/` holds shell-script stand-ins for `codex`,
-`claude`, `gemini` and `agy`. Tests copy them into a temp dir at the front of
+`claude`, `agy` and `opencode`. Tests copy them into a temp dir at the front of
 `PATH`, so the built-in presets run unchanged. Each fake rejects arguments the
 real CLI would not accept in our invocation, reads the prompt the way the real
 one does, and prints the real output format:
@@ -111,13 +111,15 @@ one does, and prints the real output format:
 |---|---|---|
 | `codex` | `exec … --output-last-message FILE … -`, prompt on stdin | final message in `FILE`, progress noise on stdout |
 | `claude` | `-p --output-format json --no-session-persistence`, prompt on stdin | `{"type":"result","is_error":…,"result":…}` |
-| `gemini` | `--output-format json … -p TEXT`, prompt on stdin | `{"response":…,"stats":…}` or `{"error":{…}}` |
 | `agy` | `--input-format stream-json --output-format stream-json`, one `{"event":"user",…}` line on stdin | NDJSON events ending in `{"event":"result","result":{…}}` |
+| `opencode` | `run --format json --agent plan`, message on stdin and no positional arguments | NDJSON events: `step_start`, `text` (`part.text`), `step_finish`, or `error` |
 
-All four answer `--version`; `codex login [status]` and `claude auth
-login|status` behave like the real commands. Environment variables select the
-behaviour: `FAKE_MODE` (`ok`, or a failure such as `fail`, `malformed`,
-`hang`; see each script), `FAKE_AUTH=ok|missing`, `FAKE_LOGIN_EXIT`, and
+All four answer `--version`; `codex login [status]`, `claude auth
+login|status`, `agy models` and `opencode auth login|list` behave like the
+real commands (the agy and opencode fakes were checked against the real
+agy 1.3.3 and opencode 1.19.0). Environment variables select the behaviour: `FAKE_MODE` (`ok`, or a
+failure such as `fail`, `malformed`, `hang`; see each script), `FAKE_AUTH`
+(`ok`, `missing`, and per-script states such as `nokey` or `none`), `FAKE_LOGIN_EXIT`, and
 `FAKE_ARGS`/`FAKE_STDIN` (files that record the argv and stdin they received).
 When a real CLI changes its flags or output, update its fake together with the
 preset.
@@ -168,6 +170,20 @@ council ask --config examples/fake-council.yaml --moderator judge "q"           
 council ask --config examples/fake-council.yaml --json "q" | jq .method
 ```
 
+### Browser check for the web UI
+
+The Go tests cover the web API; `scripts/webui-check.mjs` drives the page
+itself in Chromium, Firefox and WebKit with Playwright. It picks a moderator
+while the status checks are still running, ticks and unticks agents, refreshes
+the status, runs the council and checks that the moderator was sent and used.
+It is optional and not part of CI (it needs Node and browser downloads):
+
+```sh
+npm i playwright && npx playwright install chromium firefox webkit
+council serve --config examples/fake-council.yaml &
+node scripts/webui-check.mjs http://127.0.0.1:8787/ judge /tmp/webui.png
+```
+
 ## Adding a built-in harness
 
 Most CLIs do not need code: a [generic harness](docs/HARNESSES.md#adding-a-custom-harness)
@@ -188,14 +204,16 @@ that every user would otherwise copy the same config.
      `{{model_args}}` and `{{extra_args}}`, `ModelFlag`, `PromptMode`,
      `StdinTemplate` if needed, `Output`, `OutputSource`, `JSONPath`,
      `ErrorPath`, `Timeout` (10 minutes like the others), `LoginArgs`,
-     `LoginNote` (one or two sentences shown by `council login`), and either
-     `StatusArgs` or a `statusFunc`;
+     `LoginNote` (one or two sentences shown by `council login`), and
+     `StatusArgs`, plus a `statusParse` function if the exit code alone does
+     not tell whether the user is signed in;
    * extend the documentation comment above `Preset` with the flags and why.
-3. **Status without a status command:** write a `func(context.Context)
-   (AuthState, string)` like `geminiAuth`. Only check for the *presence* of
-   documented credential sources (environment variables, a credentials file
-   path). Never read or print credential contents. Return `AuthUnknown` when
-   you cannot tell; `doctor --probe` covers that case.
+3. **Status without a status command:** find the cheapest command that needs
+   a session and costs no tokens (agy has no `auth status`, but `agy models`
+   fails when signed out), and write a `statusParse` like
+   `antigravityStatus` that turns its output into an `AuthState` and a short
+   detail. Never read or print credential contents. Return `AuthUnknown`
+   when you cannot tell; `doctor --probe` covers that case.
 4. **Tests** in `internal/harness/harness_test.go`:
    * add the expected command line to `TestPresetsBuildDocumentedFlags`;
    * add a fake CLI to `internal/harness/testdata/fakecli/` that checks the

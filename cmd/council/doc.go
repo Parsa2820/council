@@ -1,5 +1,5 @@
 // Command council drives several LLM coding CLIs (OpenAI Codex, Claude Code,
-// Gemini CLI, Google Antigravity, or any custom "generic" harness) as
+// Google Antigravity, OpenCode, or any custom "generic" harness) as
 // participants in a group chat and prints the group's consensus answer.
 //
 // Every agent answers the user's request independently in round 1. In later

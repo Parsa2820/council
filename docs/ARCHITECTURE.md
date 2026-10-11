@@ -122,11 +122,17 @@ See [WEB_UI.md](WEB_UI.md) for the event format.
   (`BuildArgs`), starts the process with the prompt on stdin if needed, waits,
   reads stdout or the output file, and extracts the answer (`parse`/`extract`,
   using `Lookup` for JSON paths).
-* `Preset(kind)` returns the built-in `Spec` for `codex`, `claude`, `gemini` and
-  `antigravity`. `CanonicalKind` resolves aliases (`agy`, `claude-code`,
-  `gemini-cli`, `openai`, `custom`).
-* `Check` implements `council doctor`: `exec.LookPath`, `--version`, then
-  `StatusArgs` or a built-in status function (`geminiAuth`, `antigravityAuth`).
+* `Preset(kind)` returns the built-in `Spec` for `codex`, `claude`,
+  `antigravity` and `opencode`. `CanonicalKind` resolves aliases (`agy`,
+  `claude-code`, `open-code`, `openai`, `custom`). `Removed` names kinds that
+  no longer exist (`gemini`, `gemini-cli`), so `config` can say what to use
+  instead.
+* `Check` implements `council doctor` and the web UI's status badges:
+  `exec.LookPath`, `--version`, then `StatusArgs`. By default exit 0 means
+  signed in; a preset can also parse the output (`antigravityStatus` for
+  `agy models`, `openCodeStatus` for `opencode auth list`, which always exits
+  0). `Spec.SetStatusArgs`, used for a config's `status_args`, drops that
+  parser.
 * `configureProcess` (in `proc_unix.go` / `proc_windows.go`) puts the child in
   its own process group on Unix, so cancelling the context kills the whole
   process tree with `SIGKILL`. On Windows it does nothing.
@@ -334,7 +340,7 @@ shown as the explanation.
 Harness-level errors are prefixed with the agent name, for example
 `claude: timed out: context deadline exceeded`,
 `codex: codex exited: exit status 1: <last 800 chars of stderr>`, or
-`gemini: harness reported error: {"message":"…"}`.
+`opencode: harness reported error: invalid x-api-key`.
 
 ## Output streams
 
