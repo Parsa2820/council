@@ -11,7 +11,7 @@ rules are in [CONSENSUS.md](CONSENSUS.md), and the harness adapters are in
 ## Packages
 
 ```
-cmd/council/          main: detects whether stdin is a terminal and calls cli.Main
+cmd/council/          main: run() detects whether stdin is a terminal and calls cli.Main
 internal/cli/         subcommands, flag parsing, prompt assembly, live printer, result output
 internal/config/      YAML config, defaults, preset overrides, the `council init` template
 internal/harness/     Harness interface; CommandHarness subprocess runner; built-in presets;
@@ -40,9 +40,11 @@ flowchart LR
 
 ### `cmd/council`
 
-`main` checks whether stdin is a character device (a terminal) and calls
-`cli.Main(os.Args[1:], cli.Env{…})`. That flag decides whether `council ask`
-without a prompt argument reads stdin.
+`main` only calls `run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)` and
+exits with its result. `run` checks whether stdin is a character device (a
+terminal) with `isTerminal` and calls `cli.Main(args, cli.Env{…})`. That flag
+decides whether `council ask` without a prompt argument reads stdin. Tests call
+`run` directly with in-memory streams.
 
 ### `internal/cli`
 
