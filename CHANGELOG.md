@@ -7,13 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-10
+
 ### Added
 
-- Unit tests for every package (99.7% statement coverage on Linux and
-  macOS), including fake `codex`, `claude`, `gemini` and `agy` CLIs that check
-  each preset's argument, stdin and output contract.
-- `make cover`, `make cover-html` and `make test-race`; CI reports coverage
-  per package in the job summary and fails below 90%.
+- Unit tests for every package: 319 tests and subtests (up from 55), taking
+  statement coverage from 83.7% to 99.7% on Linux and macOS (83.5% on
+  Windows, which skips the shell-script tests). They include fake `codex`,
+  `claude`, `gemini` and `agy` CLIs that check each preset's argument, stdin
+  and output contract, auth status and login commands, malformed output,
+  non-zero exits and timeouts that kill the whole process tree.
+- `make cover`, `make cover-html` and `make test-race`.
+- CI writes per-package and per-function coverage to the job summary on
+  Linux, macOS and Windows, and fails below 90% on Linux and macOS.
+- The release workflow can be run by hand for an existing tag
+  (`gh workflow run release.yml -f tag=vX.Y.Z`), and re-running it replaces
+  the release's assets.
 
 ### Changed
 
@@ -75,5 +84,6 @@ First release.
   `docs/CONFIGURATION.md`, `docs/CONSENSUS.md`, `CONTRIBUTING.md`.
 - CI on Linux, macOS and Windows, and a tag-triggered release workflow.
 
-[Unreleased]: https://github.com/Parsa2820/council/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Parsa2820/council/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Parsa2820/council/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Parsa2820/council/releases/tag/v0.1.0
