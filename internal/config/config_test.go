@@ -18,7 +18,7 @@ func TestDefaultConfig(t *testing.T) {
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []string{"codex", "claude", "gemini", "agy"} {
+	for _, n := range []string{"codex", "claude", "agy", "opencode"} {
 		sp, err := c.Spec(n)
 		if err != nil {
 			t.Fatalf("%s: %v", n, err)
@@ -115,7 +115,7 @@ func TestLoadMissingAndInit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c.AgentNames(); strings.Join(got, ",") != "agy,claude,codex,gemini" {
+	if got := c.AgentNames(); strings.Join(got, ",") != "agy,claude,codex,opencode" {
 		t.Fatalf("agents: %v", got)
 	}
 }

@@ -9,7 +9,7 @@ const DefaultYAML = `# council configuration
 
 defaults:
   # Agents used by "council ask" when --agents is not given.
-  agents: [codex, claude, gemini]
+  agents: [codex, claude, agy]
   # Maximum discussion rounds (round 1 = independent answers).
   rounds: 3
   # "majority" for a plain vote, or the name of an agent to act as moderator.
@@ -31,12 +31,12 @@ agents:
     harness: claude         # claude -p --output-format json --no-session-persistence  (prompt on stdin)
     # model: sonnet
     # extra_args: ["--permission-mode", "plan"]
-  gemini:
-    harness: gemini         # gemini --output-format json -p ...  (prompt on stdin)
-    # model: gemini-2.5-pro
   agy:
     harness: antigravity    # agy --input-format stream-json --output-format stream-json
-    # model: gemini-3.1-pro-high
+    # model: gemini-3.1-pro-high   (see "agy models")
+  opencode:
+    harness: opencode       # opencode run --format json --agent plan  (prompt on stdin)
+    # model: anthropic/claude-sonnet-4-5   (provider/model, see "opencode models")
 
   # Generic harness example: any CLI that reads a prompt and prints an answer.
   # ollama:

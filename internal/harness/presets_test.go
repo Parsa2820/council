@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,14 +12,14 @@ import (
 	"time"
 )
 
-// fakeCLIs copies the fake codex, claude, gemini and agy scripts from
+// fakeCLIs copies the fake codex, claude, agy and opencode scripts from
 // testdata/fakecli into a temp dir, puts it first on PATH and returns the
 // paths of files that record the fake's argv and stdin.
 func fakeCLIs(t *testing.T) (argsFile, stdinFile string) {
 	t.Helper()
 	needSh(t)
 	bin := t.TempDir()
-	for _, name := range []string{"codex", "claude", "gemini", "agy"} {
+	for _, name := range []string{"codex", "claude", "agy", "opencode"} {
 		b, err := os.ReadFile(filepath.Join("testdata", "fakecli", name))
 		if err != nil {
 			t.Fatal(err)
@@ -91,18 +92,18 @@ func TestPresetRunContracts(t *testing.T) {
 		{KindClaude, "opus", []string{"--permission-mode", "plan"},
 			[]string{"-p", "--output-format", "json", "--no-session-persistence", "--model", "opus", "--permission-mode", "plan"},
 			prompt, "claude read " + strconv.Itoa(n) + " bytes"},
-		{KindGemini, "", nil,
-			[]string{"--output-format", "json", "-p", "Respond to the request above (provided on standard input)."},
-			prompt, "gemini read " + strconv.Itoa(n) + " bytes"},
-		{KindGemini, "gemini-2.5-pro", []string{"--yolo"},
-			[]string{"--output-format", "json", "--model", "gemini-2.5-pro", "--yolo", "-p", "Respond to the request above (provided on standard input)."},
-			prompt, "gemini read " + strconv.Itoa(n) + " bytes"},
 		{KindAntigravity, "", nil,
 			[]string{"--input-format", "stream-json", "--output-format", "stream-json"},
 			agyLine + "\n", "agy read " + strconv.Itoa(len(agyLine)) + " bytes"},
 		{"agy", "gemini-3.1-pro-high", nil,
 			[]string{"--input-format", "stream-json", "--output-format", "stream-json", "--model", "gemini-3.1-pro-high"},
 			agyLine + "\n", "agy read " + strconv.Itoa(len(agyLine)) + " bytes"},
+		{KindOpenCode, "", nil,
+			[]string{"run", "--format", "json", "--agent", "plan"},
+			prompt, "opencode read " + strconv.Itoa(n) + " bytes"},
+		{"open-code", "anthropic/claude-sonnet-4-5", []string{"--variant", "high"},
+			[]string{"run", "--format", "json", "--agent", "plan", "--model", "anthropic/claude-sonnet-4-5", "--variant", "high"},
+			prompt, "opencode read " + strconv.Itoa(n) + " bytes"},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.model, func(t *testing.T) {
@@ -147,16 +148,15 @@ func TestPresetRunFailures(t *testing.T) {
 		{KindClaude, "malformed", []string{"output is not valid JSON", "Claude Code is starting"}},
 		{KindClaude, "empty", []string{"no answer in output"}},
 		{KindClaude, "fail", []string{"claude exited: exit status 1", "ECONNREFUSED"}},
-		{KindGemini, "error", []string{`harness reported error: {"code":41,"message":"Please set an Auth method","type":"FatalAuthenticationError"}`}},
-		{KindGemini, "error_exit", []string{"exit status 1", "Quota exceeded"}},
-		{KindGemini, "malformed", []string{"output is not valid JSON"}},
-		{KindGemini, "nullresponse", []string{"no answer in output"}},
-		{KindGemini, "fail", []string{"exit status 52", "Error when talking to Gemini API"}},
 		{KindAntigravity, "error", []string{"harness reported error: quota exhausted"}},
 		{KindAntigravity, "error_exit", []string{"exit status 1", "authentication required"}},
 		{KindAntigravity, "malformed", []string{"no answer in output"}},
 		{KindAntigravity, "noresult", []string{"no answer in output"}},
 		{KindAntigravity, "fail", []string{"exit status 3", "keyring unavailable"}},
+		{KindOpenCode, "error", []string{"exit status 1", "harness reported error: invalid x-api-key"}},
+		{KindOpenCode, "malformed", []string{"no answer in output"}},
+		{KindOpenCode, "notext", []string{"no answer in output"}},
+		{KindOpenCode, "fail", []string{"exit status 1", "Model not found"}},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.mode, func(t *testing.T) {
@@ -224,15 +224,17 @@ func TestPresetCheck(t *testing.T) {
 		{KindCodex, "missing", nil, AuthMissing, "codex-cli 0.46.0", "Not logged in"},
 		{KindClaude, "ok", nil, AuthOK, "2.0.14 (Claude Code)", `{"loggedIn": true, "authMethod": "claude.ai"}`},
 		{KindClaude, "missing", nil, AuthMissing, "2.0.14 (Claude Code)", `{"loggedIn": false}`},
-		{KindGemini, "", map[string]string{"GEMINI_API_KEY": "k"}, AuthOK, "0.9.0", "GEMINI_API_KEY is set"},
-		{KindGemini, "", nil, AuthMissing, "0.9.0", "no GEMINI_API_KEY"},
-		{KindAntigravity, "", map[string]string{"AGY_ADC_AUTH": "true"}, AuthOK, "agy 1.2.0", "Application Default Credentials"},
-		{KindAntigravity, "", nil, AuthUnknown, "agy 1.2.0", "OS keyring"},
+		{KindAntigravity, "ok", nil, AuthOK, "1.3.3", "signed in (2 models available)"},
+		{KindAntigravity, "missing", nil, AuthMissing, "1.3.3", "Please sign in to view available models"},
+		{KindAntigravity, "nokey", nil, AuthMissing, "1.3.3", "GEMINI_API_KEY environment variable is not set"},
+		{KindOpenCode, "ok", nil, AuthOK, "1.19.0", "2 stored credential(s), 0 provider environment variable(s)"},
+		{KindOpenCode, "env", nil, AuthOK, "1.19.0", "0 stored credential(s), 1 provider environment variable(s)"},
+		{KindOpenCode, "none", nil, AuthOK, "1.19.0", "only OpenCode's free models"},
+		{KindOpenCode, "broken", nil, AuthMissing, "1.19.0", "failed to read auth.json"},
 	}
 	for _, c := range cases {
 		t.Run(c.kind+"/"+c.auth, func(t *testing.T) {
 			fakeCLIs(t)
-			cleanAuthEnv(t)
 			t.Setenv("FAKE_AUTH", c.auth)
 			for k, v := range c.env {
 				t.Setenv(k, v)
@@ -243,91 +245,6 @@ func TestPresetCheck(t *testing.T) {
 			}
 			if st.Auth != c.wantAuth || st.Version != c.wantVersion || !strings.Contains(st.Detail, c.wantDetail) {
 				t.Errorf("got auth=%s version=%q detail=%q", st.Auth, st.Version, st.Detail)
-			}
-		})
-	}
-}
-
-// cleanAuthEnv clears every credential source the status probes look at and
-// points the home directory at an empty temp dir.
-func cleanAuthEnv(t *testing.T) string {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	for _, k := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI", "AGY_ADC_AUTH"} {
-		t.Setenv(k, "")
-	}
-	return home
-}
-
-func TestGeminiAuth(t *testing.T) {
-	cases := []struct {
-		name       string
-		env        map[string]string
-		creds      bool
-		want       AuthState
-		wantDetail string
-	}{
-		{"gemini key", map[string]string{"GEMINI_API_KEY": "x"}, false, AuthOK, "GEMINI_API_KEY is set"},
-		{"google key", map[string]string{"GOOGLE_API_KEY": "x"}, false, AuthOK, "GOOGLE_API_KEY is set"},
-		{"vertex", map[string]string{"GOOGLE_GENAI_USE_VERTEXAI": "true"}, false, AuthOK, "Vertex AI"},
-		{"vertex false", map[string]string{"GOOGLE_GENAI_USE_VERTEXAI": "false"}, false, AuthMissing, "council login gemini"},
-		{"cached login", nil, true, AuthOK, "cached Google login at "},
-		{"nothing", nil, false, AuthMissing, "no GEMINI_API_KEY"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			home := cleanAuthEnv(t)
-			for k, v := range c.env {
-				t.Setenv(k, v)
-			}
-			if c.creds {
-				writeFile(t, filepath.Join(home, ".gemini", "oauth_creds.json"), "{}")
-			}
-			got, detail := geminiAuth(context.Background())
-			if got != c.want || !strings.Contains(detail, c.wantDetail) {
-				t.Errorf("got %s %q", got, detail)
-			}
-		})
-	}
-	// A directory where the credentials file should be does not count.
-	home := cleanAuthEnv(t)
-	if err := os.MkdirAll(filepath.Join(home, ".gemini", "oauth_creds.json"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := geminiAuth(context.Background()); got != AuthMissing {
-		t.Errorf("directory counted as credentials: %s", got)
-	}
-}
-
-func TestAntigravityAuth(t *testing.T) {
-	cases := []struct {
-		name       string
-		settings   string // "" = no settings file
-		env        map[string]string
-		want       AuthState
-		wantDetail string
-	}{
-		{"gemini provider with key", `{"modelProvider":"gemini"}`, map[string]string{"GEMINI_API_KEY": "x"}, AuthOK, "Gemini API key"},
-		{"gemini provider without key", `{"modelProvider":"gemini"}`, nil, AuthMissing, "GEMINI_API_KEY is not set"},
-		{"other provider, ADC", `{"modelProvider":"vertex"}`, map[string]string{"AGY_ADC_AUTH": "true"}, AuthOK, "Application Default Credentials"},
-		{"bad settings JSON", `{not json`, nil, AuthUnknown, "OS keyring"},
-		{"no settings, ADC", "", map[string]string{"AGY_ADC_AUTH": "true"}, AuthOK, "AGY_ADC_AUTH=true"},
-		{"no settings", "", nil, AuthUnknown, "council doctor --probe"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			home := cleanAuthEnv(t)
-			for k, v := range c.env {
-				t.Setenv(k, v)
-			}
-			if c.settings != "" {
-				writeFile(t, filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), c.settings)
-			}
-			got, detail := antigravityAuth(context.Background())
-			if got != c.want || !strings.Contains(detail, c.wantDetail) {
-				t.Errorf("got %s %q", got, detail)
 			}
 		})
 	}
@@ -351,9 +268,9 @@ func TestPresetLoginCommands(t *testing.T) {
 	}{
 		{KindCodex, []string{"codex", "login"}, "--device-auth"},
 		{KindClaude, []string{"claude", "auth", "login"}, "--console"},
-		{KindGemini, []string{"gemini"}, "Login with Google"},
-		{KindAntigravity, []string{"agy"}, "AGY_ADC_AUTH"},
+		{KindAntigravity, []string{"agy"}, "GEMINI_API_KEY"},
 		{"agy", []string{"agy"}, "OS keyring"},
+		{KindOpenCode, []string{"opencode", "auth", "login"}, "--provider"},
 	}
 	for _, c := range cases {
 		argv, note := presetHarness(t, c.kind, nil).LoginCommand()
@@ -373,6 +290,7 @@ func TestPresetLoginAndStatusAgainstFakes(t *testing.T) {
 	}{
 		{KindCodex, []string{"login"}},
 		{KindClaude, []string{"auth", "login"}},
+		{KindOpenCode, []string{"auth", "login"}},
 	} {
 		argv, _ := presetHarness(t, c.kind, nil).LoginCommand()
 		out, err := runQuietArgv(argv)
@@ -404,7 +322,8 @@ func runQuietArgv(argv []string) (string, error) {
 func TestCanonicalKindAndBuiltins(t *testing.T) {
 	cases := map[string]string{
 		"agy": KindAntigravity, " AGY ": KindAntigravity, "claude-code": KindClaude,
-		"gemini-cli": KindGemini, "openai": KindCodex, "custom": KindGeneric,
+		"open-code": KindOpenCode, "OpenCode": KindOpenCode, "openai": KindCodex, "custom": KindGeneric,
+		"gemini": "gemini", "gemini-cli": "gemini-cli",
 		"Codex": KindCodex, "ollama": "ollama", "": "",
 	}
 	for in, want := range cases {
@@ -412,21 +331,85 @@ func TestCanonicalKindAndBuiltins(t *testing.T) {
 			t.Errorf("CanonicalKind(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if got, want := BuiltinKinds(), []string{"antigravity", "claude", "codex", "gemini"}; !reflect.DeepEqual(got, want) {
+	if got, want := BuiltinKinds(), []string{"antigravity", "claude", "codex", "opencode"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("BuiltinKinds() = %q", got)
 	}
-	for _, k := range []string{"generic", "custom", "ollama", ""} {
+	for _, k := range []string{"generic", "custom", "ollama", "", "gemini", "gemini-cli"} {
 		if _, ok := Preset(k); ok {
 			t.Errorf("Preset(%q) should not exist", k)
 		}
 	}
-	for _, k := range []string{"codex", "openai", "claude", "claude-code", "gemini", "gemini-cli", "antigravity", "agy"} {
+	for _, k := range []string{"codex", "openai", "claude", "claude-code", "antigravity", "agy", "opencode", "open-code"} {
 		sp, ok := Preset(k)
 		if !ok || sp.Kind != CanonicalKind(k) || sp.Timeout != 10*time.Minute || sp.LoginArgs == nil {
 			t.Errorf("Preset(%q) = %+v, %v", k, sp, ok)
 		}
-		if (sp.StatusArgs == nil) == (sp.statusFunc == nil) {
-			t.Errorf("Preset(%q) needs exactly one of StatusArgs or statusFunc", k)
+		if len(sp.StatusArgs) == 0 {
+			t.Errorf("Preset(%q) needs a status command", k)
 		}
+	}
+}
+
+func TestRemoved(t *testing.T) {
+	for _, k := range []string{"gemini", "Gemini-CLI ", "gemini-cli"} {
+		why, ok := Removed(k)
+		if !ok || !strings.Contains(why, "Gemini CLI is deprecated") || !strings.Contains(why, "harness: antigravity") || !strings.Contains(why, "harness: generic") {
+			t.Errorf("Removed(%q) = %q, %v", k, why, ok)
+		}
+	}
+	for _, k := range []string{"agy", "codex", "generic", ""} {
+		if _, ok := Removed(k); ok {
+			t.Errorf("Removed(%q) should be false", k)
+		}
+	}
+}
+
+func TestAntigravityStatus(t *testing.T) {
+	errExit := errors.New("exit status 1")
+	cases := []struct {
+		name, out string
+		err       error
+		want      AuthState
+		detail    string
+	}{
+		{"signed in", "Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\ngemini-3.1-pro\tGemini 3.1 Pro\n", nil, AuthOK, "signed in (2 models available)"},
+		{"signed in, no list", "Fetching available models...", nil, AuthOK, "signed in"},
+		{"signed out", "Fetching available models...\nError: Please sign in to view available models. Launch the CLI without arguments to sign in.", errExit, AuthMissing, "Please sign in to view available models. Launch the CLI without arguments to sign in."},
+		{"no output", "", errExit, AuthMissing, "exit status 1"},
+	}
+	for _, c := range cases {
+		if got, detail := antigravityStatus(c.out, c.err); got != c.want || detail != c.detail {
+			t.Errorf("%s: got %s %q", c.name, got, detail)
+		}
+	}
+}
+
+func TestOpenCodeStatus(t *testing.T) {
+	errExit := errors.New("exit status 1")
+	cases := []struct {
+		name, out string
+		err       error
+		want      AuthState
+		detail    string
+	}{
+		{"stored", "\x1b[0m┌  Credentials \x1b[90m~/.local/share/opencode/auth.json\n│\n●  Anthropic \x1b[90mapi\n│\n└  1 credential\n", nil, AuthOK, "1 stored credential(s), 0 provider environment variable(s)"},
+		{"both", "└  2 credentials\n\n┌  Environment\n│\n●  OpenAI OPENAI_API_KEY\n●  Anthropic ANTHROPIC_API_KEY\n└  2 environment variables\n", nil, AuthOK, "2 stored credential(s), 2 provider environment variable(s)"},
+		{"none", "┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n", nil, AuthOK, "no provider configured: only OpenCode's free models (run `council login opencode` to add one)"},
+		{"failed", "\x1b[91mError: \x1b[0mfailed to read auth.json", errExit, AuthMissing, "Error: failed to read auth.json"},
+		{"failed silently", "", errExit, AuthMissing, "exit status 1"},
+	}
+	for _, c := range cases {
+		if got, detail := openCodeStatus(c.out, c.err); got != c.want || detail != c.detail {
+			t.Errorf("%s: got %s %q", c.name, got, detail)
+		}
+	}
+}
+
+func TestOpenCodeMultiStepAnswerIsTheLastText(t *testing.T) {
+	fakeCLIs(t)
+	t.Setenv("FAKE_MODE", "multi")
+	got, err := presetHarness(t, KindOpenCode, nil).Run(context.Background(), "q")
+	if err != nil || got != "final answer" {
+		t.Fatalf("got %q, %v", got, err)
 	}
 }

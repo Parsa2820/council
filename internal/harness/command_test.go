@@ -353,9 +353,26 @@ extra line"`)})
 			t.Fatalf("got %+v", st)
 		}
 	})
-	t.Run("status func", func(t *testing.T) {
-		h, _ := New("a", Spec{Command: script(t, `exit 0`), statusFunc: func(context.Context) (AuthState, string) { return AuthOK, "custom" }})
-		if st := h.Check(context.Background()); st.Auth != AuthOK || st.Detail != "custom" {
+	t.Run("status parser", func(t *testing.T) {
+		parse := func(out string, err error) (AuthState, string) {
+			if err != nil {
+				return AuthMissing, "parsed failure"
+			}
+			return AuthOK, "parsed " + out + "\nsecond line"
+		}
+		h, _ := New("a", Spec{Command: script(t, `echo "out:$1"; [ "$1" = ok ]`), StatusArgs: []string{"ok"}, statusParse: parse})
+		if st := h.Check(context.Background()); st.Auth != AuthOK || st.Detail != "parsed out:ok" {
+			t.Fatalf("got %+v", st)
+		}
+		h, _ = New("a", Spec{Command: script(t, `echo "out:$1"; [ "$1" = ok ]`), StatusArgs: []string{"bad"}, statusParse: parse})
+		if st := h.Check(context.Background()); st.Auth != AuthMissing || st.Detail != "parsed failure" {
+			t.Fatalf("got %+v", st)
+		}
+		// Overriding the status command drops the preset's parser.
+		sp := Spec{Command: script(t, `echo "plain"`), StatusArgs: []string{"x"}, statusParse: parse}
+		sp.SetStatusArgs([]string{"whoami"})
+		h, _ = New("a", sp)
+		if st := h.Check(context.Background()); st.Auth != AuthOK || st.Detail != "plain" {
 			t.Fatalf("got %+v", st)
 		}
 	})
@@ -378,18 +395,4 @@ extra line"`)})
 			t.Fatal("Check should not wait on a cancelled context")
 		}
 	})
-}
-
-func TestHomeAndFileExists(t *testing.T) {
-	d := t.TempDir()
-	t.Setenv("HOME", d)
-	t.Setenv("USERPROFILE", d)
-	if home() != d {
-		t.Errorf("home() = %q, want %q", home(), d)
-	}
-	f := filepath.Join(d, "f")
-	writeFile(t, f, "x")
-	if !fileExists(f) || fileExists(d) || fileExists(filepath.Join(d, "nope")) {
-		t.Error("fileExists")
-	}
 }

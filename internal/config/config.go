@@ -62,7 +62,7 @@ type Defaults struct {
 }
 
 // Agent configures one participant. Harness selects a built-in preset
-// (codex, claude, gemini, antigravity/agy) or "generic"; every other field
+// (codex, claude, antigravity/agy, opencode) or "generic"; every other field
 // overrides the preset.
 type Agent struct {
 	Harness       string            `yaml:"harness"`
@@ -175,7 +175,7 @@ func (c *Config) applyDefaults() {
 		c.Defaults.RequireExplicitAgreement = &t
 	}
 	if len(c.Defaults.Agents) == 0 {
-		c.Defaults.Agents = []string{"codex", "claude", "gemini"}
+		c.Defaults.Agents = []string{"codex", "claude", "agy"}
 	}
 }
 
@@ -208,15 +208,21 @@ func (c *Config) AgentNames() []string {
 }
 
 // Spec resolves an agent name to a harness Spec. Names that are not defined
-// in the config but match a built-in harness kind (codex, claude, gemini,
-// antigravity, agy) resolve to that preset.
+// in the config but match a built-in harness kind (codex, claude,
+// antigravity, agy, opencode) resolve to that preset.
 func (c *Config) Spec(name string) (harness.Spec, error) {
 	a, ok := c.Agents[name]
 	if !ok {
+		if why, removed := harness.Removed(name); removed {
+			return harness.Spec{}, fmt.Errorf("agent %q is not defined, and %s", name, why)
+		}
 		if _, isBuiltin := harness.Preset(name); !isBuiltin {
 			return harness.Spec{}, fmt.Errorf("unknown agent %q (define it under `agents:` in %s)", name, c.displayPath())
 		}
 		a = Agent{Harness: name}
+	}
+	if why, removed := harness.Removed(a.Harness); removed {
+		return harness.Spec{}, fmt.Errorf("agent %q: %s", name, why)
 	}
 	kind := harness.CanonicalKind(a.Harness)
 	if kind == "" {
@@ -273,7 +279,7 @@ func (c *Config) Spec(name string) (harness.Spec, error) {
 		sp.LoginArgs = a.LoginArgs
 	}
 	if a.StatusArgs != nil {
-		sp.StatusArgs = a.StatusArgs
+		sp.SetStatusArgs(a.StatusArgs)
 	}
 	if _, err := harness.New(name, sp); err != nil {
 		return harness.Spec{}, err

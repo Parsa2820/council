@@ -117,7 +117,7 @@ func TestLoadErrors(t *testing.T) {
 	}
 	missing := filepath.Join(d, "missing.yaml")
 	c, err = Load(missing)
-	if err != nil || c.Path() != missing || !reflect.DeepEqual(c.Defaults.Agents, []string{"codex", "claude", "gemini"}) {
+	if err != nil || c.Path() != missing || !reflect.DeepEqual(c.Defaults.Agents, []string{"codex", "claude", "agy"}) {
 		t.Fatalf("missing file should load defaults: %+v %v", c, err)
 	}
 }
@@ -136,7 +136,12 @@ func TestParseTable(t *testing.T) {
 		{"unknown moderator", "defaults: {moderator: judge}\n", `defaults.moderator: unknown agent "judge"`},
 		{"builtin moderator", "defaults: {moderator: claude}\n", ""},
 		{"defined moderator", "defaults: {moderator: j}\nagents: {j: {command: judge}}\n", ""},
-		{"unknown harness", "agents: {a: {harness: chatgpt}}\n", `agent "a": unknown harness "chatgpt" (want one of antigravity, claude, codex, gemini or generic)`},
+		{"unknown harness", "agents: {a: {harness: chatgpt}}\n", `agent "a": unknown harness "chatgpt" (want one of antigravity, claude, codex, opencode or generic)`},
+		{"removed gemini harness", "agents: {g: {harness: gemini}}\n", `agent "g": the gemini harness was removed in council v0.2.1 because Gemini CLI is deprecated; use ` + "`harness: antigravity`" + ` (Google's Antigravity CLI, agy) or ` + "`harness: generic`" + ` instead`},
+		{"removed gemini-cli alias", "agents: {g: {harness: Gemini-CLI, command: gemini}}\n", "Gemini CLI is deprecated"},
+		{"gemini by name in defaults", "defaults: {agents: [codex, gemini]}\nagents: {codex: {}}\n", ""},
+		{"gemini by name as moderator", "defaults: {moderator: gemini}\n", `defaults.moderator: agent "gemini" is not defined, and the gemini harness was removed`},
+		{"gemini name with another harness", "agents: {gemini: {harness: antigravity}}\n", ""},
 		{"generic needs command", "agents: {a: {harness: generic}}\n", `agent "a": generic harness needs `},
 		{"implicit generic needs command", "agents: {a: {model: m}}\n", "generic harness needs"},
 		{"bad prompt mode", "agents: {a: {command: x, prompt_mode: carrier-pigeon}}\n", `unknown prompt_mode "carrier-pigeon"`},
@@ -201,9 +206,9 @@ agents:
     timeout: 30s
     env: {ANTHROPIC_LOG: debug}
     workdir: ~/proj
-  mygem:
-    harness: gemini
-    command: $COUNCIL_TEST_BIN/gemini
+  mycode:
+    harness: open-code
+    command: $COUNCIL_TEST_BIN/opencode
     args: ["--output-format", "json", "-p", "{{prompt}}"]
     prompt_mode: arg
     model_flag: -m
@@ -236,8 +241,8 @@ agents:
 				reflect.DeepEqual(s.ExtraArgs, []string{"--permission-mode", "plan"}) && s.Env["ANTHROPIC_LOG"] == "debug" &&
 				s.Dir == filepath.Join(home, "proj") && s.JSONPath == "result"
 		}},
-		{"mygem", func(s harness.Spec) bool {
-			return s.Kind == harness.KindGemini && s.Command == "/opt/bin/gemini" && s.PromptMode == harness.PromptArg &&
+		{"mycode", func(s harness.Spec) bool {
+			return s.Kind == harness.KindOpenCode && s.Command == "/opt/bin/opencode" && s.PromptMode == harness.PromptArg &&
 				s.ModelFlag == "-m" && s.JSONPath == "response.text" && s.ErrorPath == "err" &&
 				s.LoginArgs != nil && len(s.LoginArgs) == 0 && reflect.DeepEqual(s.StatusArgs, []string{"whoami"})
 		}},
@@ -246,7 +251,7 @@ agents:
 				s.Output == harness.OutputJSONL && s.OutputSource == harness.SourceFile && s.Timeout == 2*time.Minute
 		}},
 		{"agy", func(s harness.Spec) bool { return s.Kind == harness.KindAntigravity && s.Command == "agy" }},
-		{"gemini", func(s harness.Spec) bool { return s.Kind == harness.KindGemini && s.Command == "gemini" }},
+		{"opencode", func(s harness.Spec) bool { return s.Kind == harness.KindOpenCode && s.Command == "opencode" }},
 		{"claude-code", func(s harness.Spec) bool { return s.Kind == harness.KindClaude }},
 	}
 	for _, tc := range cases {
@@ -270,7 +275,7 @@ agents:
 	if _, err := c.Spec("nobody"); err == nil || !strings.Contains(err.Error(), "/etc/council.yaml") {
 		t.Errorf("unknown agent should mention the config path: %v", err)
 	}
-	if got := c.AgentNames(); !reflect.DeepEqual(got, []string{"agy", "codex", "fast-claude", "mygem", "tool"}) {
+	if got := c.AgentNames(); !reflect.DeepEqual(got, []string{"agy", "codex", "fast-claude", "mycode", "tool"}) {
 		t.Errorf("AgentNames = %q", got)
 	}
 }
@@ -332,7 +337,7 @@ func TestDefaultYAMLRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.AgentNames(), []string{"agy", "claude", "codex", "gemini"}) {
+	if !reflect.DeepEqual(c.AgentNames(), []string{"agy", "claude", "codex", "opencode"}) {
 		t.Errorf("default agents: %q", c.AgentNames())
 	}
 	if d := Default(); !reflect.DeepEqual(d.Defaults, c.Defaults) || d.Path() != "" {

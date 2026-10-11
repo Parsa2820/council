@@ -1,5 +1,5 @@
 // Package harness adapts LLM coding CLIs ("harnesses") such as Codex CLI,
-// Claude Code, Gemini CLI and Antigravity CLI to a single interface: send a
+// Claude Code, Antigravity CLI and OpenCode to a single interface: send a
 // prompt non-interactively, get the agent's final text back.
 //
 // Every adapter, built-in or user-defined, is a [CommandHarness] configured

@@ -79,7 +79,7 @@ func TestPresetsBuildDocumentedFlags(t *testing.T) {
 		want := map[string]string{
 			KindCodex:       "exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message OF --model M -",
 			KindClaude:      "-p --output-format json --no-session-persistence --model M",
-			KindGemini:      "--output-format json --model M -p Respond to the request above (provided on standard input).",
+			KindOpenCode:    "run --format json --agent plan --model M",
 			KindAntigravity: "--input-format stream-json --output-format stream-json --model M",
 		}[k]
 		if args != want {

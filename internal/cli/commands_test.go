@@ -16,13 +16,13 @@ import (
 	"github.com/Parsa2820/council/internal/consensus"
 )
 
-// fakePresetCLIs puts the harness package's fake codex, claude, gemini and
-// agy scripts first on PATH and isolates every credential source.
+// fakePresetCLIs puts the harness package's fake codex, claude, agy and
+// opencode scripts first on PATH and isolates every credential source.
 func fakePresetCLIs(t *testing.T) (argsFile string) {
 	t.Helper()
 	needSh(t)
 	bin := t.TempDir()
-	for _, name := range []string{"codex", "claude", "gemini", "agy"} {
+	for _, name := range []string{"codex", "claude", "agy", "opencode"} {
 		b, err := os.ReadFile(filepath.Join("..", "harness", "testdata", "fakecli", name))
 		if err != nil {
 			t.Fatal(err)
@@ -35,7 +35,7 @@ func fakePresetCLIs(t *testing.T) (argsFile string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	for _, k := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI", "AGY_ADC_AUTH", "FAKE_STDIN", "FAKE_CHILD"} {
+	for _, k := range []string{"GEMINI_API_KEY", "FAKE_STDIN", "FAKE_CHILD"} {
 		t.Setenv(k, "")
 	}
 	argsFile = filepath.Join(t.TempDir(), "args")
@@ -393,15 +393,13 @@ func TestInitDefaultPathAndForce(t *testing.T) {
 func TestDoctorPresets(t *testing.T) {
 	fakePresetCLIs(t)
 	cfg := writeConfig(t, `defaults:
-  agents: [codex, claude, gemini]
+  agents: [codex, claude, opencode]
 agents:
   agy: {harness: antigravity}
   codex: {harness: codex}
 `)
 	t.Run("default agent list, table", func(t *testing.T) {
-		t.Setenv("GEMINI_API_KEY", "set")
 		out, errOut, code := runCLI(t, "", "doctor", "--config", cfg)
-		// agy's auth is unknown, which is not a failure.
 		if code != 0 || errOut != "" {
 			t.Fatalf("exit %d: %s\n%s", code, out, errOut)
 		}
@@ -409,13 +407,13 @@ agents:
 		if lines[0] != "config: "+cfg || !strings.HasPrefix(lines[2], "AGENT") || len(lines) != 7 {
 			t.Fatalf("output:\n%s", out)
 		}
-		for i, prefix := range []string{"agy", "codex", "claude", "gemini"} { // config agents sorted, then defaults
+		for i, prefix := range []string{"agy", "codex", "claude", "opencode"} { // config agents sorted, then defaults
 			f := strings.Fields(lines[3+i])
-			if f[0] != prefix || f[3] != "yes" {
+			if f[0] != prefix || f[3] != "yes" || f[4] != "ok" {
 				t.Errorf("row %d: %q", i, lines[3+i])
 			}
 		}
-		for _, w := range []string{"codex-cli 0.46.0", "2.0.14 (Claude Code)", "Logged in using ChatGPT", "GEMINI_API_KEY is set", "unknown"} {
+		for _, w := range []string{"codex-cli 0.46.0", "2.0.14 (Claude Code)", "Logged in using ChatGPT", "signed in (2 models available)", "2 stored credential(s)", "1.3.3", "1.19.0"} {
 			if !strings.Contains(out, w) {
 				t.Errorf("missing %q:\n%s", w, out)
 			}
@@ -423,18 +421,18 @@ agents:
 	})
 	t.Run("signed out", func(t *testing.T) {
 		t.Setenv("FAKE_AUTH", "missing")
-		out, _, code := runCLI(t, "", "status", "--config", cfg, "codex", "claude")
-		if code != 1 || strings.Count(out, "missing") != 2 || !strings.Contains(out, "Some harnesses are not ready") {
+		out, _, code := runCLI(t, "", "status", "--config", cfg, "codex", "claude", "agy")
+		if code != 1 || strings.Count(out, "missing") != 3 || !strings.Contains(out, "Please sign in to view available models") || !strings.Contains(out, "Some harnesses are not ready") {
 			t.Fatalf("exit %d:\n%s", code, out)
 		}
 	})
 	t.Run("json with probe", func(t *testing.T) {
-		out, _, code := runCLI(t, "", "doctor", "--config", cfg, "--json", "--probe", "agy", "claude", "codex")
+		out, _, code := runCLI(t, "", "doctor", "--config", cfg, "--json", "--probe", "agy", "claude", "codex", "opencode")
 		if code != 0 {
 			t.Fatalf("exit %d: %s", code, out)
 		}
 		var rows []map[string]any
-		if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 3 {
+		if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 4 {
 			t.Fatalf("%v: %s", err, out)
 		}
 		for _, r := range rows {
@@ -442,7 +440,7 @@ agents:
 				t.Errorf("row %v", r)
 			}
 		}
-		if !strings.Contains(rows[0]["probe"].(string), "agy read") {
+		if !strings.Contains(rows[0]["probe"].(string), "agy read") || !strings.Contains(rows[3]["probe"].(string), "opencode read") {
 			t.Errorf("probe output: %v", rows[0]["probe"])
 		}
 	})
@@ -488,7 +486,10 @@ func TestLoginPresets(t *testing.T) {
 		{"config flag after agent", []string{"claude", "--config", cfg}, "0", 0, "fake claude login: auth login\n",
 			[]string{"running: claude auth login"}, []string{"auth", "login"}},
 		{"login command fails", []string{"codex"}, "3", 1, "fake codex login: login\n", []string{"council: exit status 3"}, []string{"login"}},
+		{"opencode with provider", []string{"opencode", "--", "--provider", "anthropic"}, "0", 0, "fake opencode login: auth login --provider anthropic\n",
+			[]string{"running: opencode auth login --provider anthropic"}, []string{"auth", "login", "--provider", "anthropic"}},
 		{"unknown agent", []string{"ghost"}, "0", 2, "", []string{`unknown agent "ghost"`}, nil},
+		{"removed gemini", []string{"gemini"}, "0", 2, "", []string{"Gemini CLI is deprecated", "harness: antigravity"}, nil},
 		{"too many agents", []string{"codex", "claude"}, "0", 2, "", []string{"usage: council login <agent>"}, nil},
 		{"no login command", []string{"nolog"}, "0", 1, "", []string{`agent "nolog" has no login command`}, nil},
 	}
@@ -519,7 +520,7 @@ func TestLoginPresets(t *testing.T) {
 	}
 	t.Run("not installed", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
-		if _, e, code := runCLI(t, "", "login", "--config", cfg, "gemini"); code != 1 || !strings.Contains(e, "gemini is not installed or not on PATH") {
+		if _, e, code := runCLI(t, "", "login", "--config", cfg, "opencode"); code != 1 || !strings.Contains(e, "opencode is not installed or not on PATH") {
 			t.Fatalf("exit %d %q", code, e)
 		}
 	})

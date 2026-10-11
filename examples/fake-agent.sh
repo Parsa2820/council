@@ -1,6 +1,6 @@
 #!/bin/sh
 # fake-agent.sh - a deterministic stand-in for an LLM coding CLI, used to
-# demo and test council without codex/claude/gemini installed.
+# demo and test council without codex, claude, agy or opencode installed.
 #
 # usage: fake-agent.sh NAME INITIAL_ANSWER [follow|stubborn] [DELAY_SECONDS]
 #

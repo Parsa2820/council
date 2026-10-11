@@ -2,11 +2,21 @@
 # Fake Antigravity CLI (agy) for tests. Mimics the stream-json session mode:
 # reads {"event":"user","message":{"content":...}} lines on stdin and writes
 # NDJSON events, ending the turn with {"event":"result","result":{...}}.
+# `agy models` is the sign-in check, as in agy 1.3: it lists models with exit
+# 0 when signed in and exits 1 with "Please sign in" otherwise.
 # Env: FAKE_MODE (ok|error|error_exit|malformed|noresult|fail|hang),
-#      FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
+#      FAKE_AUTH (ok|missing|nokey), FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
 set -u
 [ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
-[ "${1:-}" = --version ] && { echo "agy 1.2.0"; exit 0; }
+[ "${1:-}" = --version ] && { echo "1.3.3"; exit 0; }
+if [ "${1:-}" = models ]; then
+	echo "Fetching available models..." >&2
+	case "${FAKE_AUTH:-ok}" in
+	ok) printf 'gemini-3.8-flash-high\tGemini 3.8 Flash (High)\ngemini-3.1-pro-high\tGemini 3.1 Pro (High)\n'; exit 0 ;;
+	nokey) echo 'modelProvider is set to "gemini" in settings.json, but the GEMINI_API_KEY environment variable is not set.' >&2; exit 1 ;;
+	*) echo "Error: Please sign in to view available models. Launch the CLI without arguments to sign in." >&2; exit 1 ;;
+	esac
+fi
 in="" out=""
 while [ $# -gt 0 ]; do
 	case "$1" in

@@ -26,6 +26,10 @@ func (h *CommandHarness) Check(ctx context.Context) Status {
 	}
 
 	switch {
+	case len(h.spec.StatusArgs) > 0 && h.spec.statusParse != nil:
+		out, err := h.runQuiet(ctx, 30*time.Second, h.spec.StatusArgs...)
+		st.Auth, st.Detail = h.spec.statusParse(out, err)
+		st.Detail = firstLine(st.Detail)
 	case len(h.spec.StatusArgs) > 0:
 		out, err := h.runQuiet(ctx, 30*time.Second, h.spec.StatusArgs...)
 		if err == nil {
@@ -37,8 +41,6 @@ func (h *CommandHarness) Check(ctx context.Context) Status {
 		if st.Detail == "" && err != nil {
 			st.Detail = err.Error()
 		}
-	case h.spec.statusFunc != nil:
-		st.Auth, st.Detail = h.spec.statusFunc(ctx)
 	default:
 		st.Detail = "no status command configured"
 	}

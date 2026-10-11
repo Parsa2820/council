@@ -9,7 +9,7 @@ import (
 type Harness interface {
 	// Name is the agent name used in the chat (e.g. "claude" or "claude-opus").
 	Name() string
-	// Kind is the harness type (codex, claude, gemini, antigravity, generic, ...).
+	// Kind is the harness type (codex, claude, antigravity, opencode, generic, ...).
 	Kind() string
 	// Run sends prompt to the harness and returns its final answer text.
 	Run(ctx context.Context, prompt string) (string, error)
@@ -100,6 +100,14 @@ type Spec struct {
 	LoginNote string
 	// StatusArgs are appended to Command; exit code 0 means signed in.
 	StatusArgs []string
-	// statusFunc is a built-in auth probe used when StatusArgs is empty.
-	statusFunc func(ctx context.Context) (AuthState, string)
+	// statusParse, set by presets, interprets the output of StatusArgs when
+	// the exit code alone is not enough. SetStatusArgs clears it.
+	statusParse func(out string, err error) (AuthState, string)
+}
+
+// SetStatusArgs replaces the status command; the preset's own
+// interpretation of its output no longer applies.
+func (s *Spec) SetStatusArgs(args []string) {
+	s.StatusArgs = args
+	s.statusParse = nil
 }

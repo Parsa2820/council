@@ -8,7 +8,7 @@ import (
 )
 
 // configureProcess puts the child in its own process group so that a timeout
-// kills the whole tree (CLIs such as Claude Code and Gemini CLI spawn helpers).
+// kills the whole tree (CLIs such as Claude Code and OpenCode spawn helpers).
 func configureProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {

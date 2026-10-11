@@ -1,0 +1,63 @@
+#!/bin/sh
+# Fake OpenCode CLI for tests. Mimics `opencode run --format json --agent plan`
+# (message on stdin, NDJSON events on stdout as in opencode 1.19),
+# `opencode auth list|login` and `opencode --version`.
+# Env: FAKE_MODE (ok|multi|error|malformed|notext|fail|hang),
+#      FAKE_AUTH (ok|env|none|broken), FAKE_ARGS/FAKE_STDIN, FAKE_CHILD.
+set -u
+[ -n "${FAKE_ARGS:-}" ] && printf '%s\n' "$@" > "$FAKE_ARGS"
+esc=$(printf '\033')
+case "${1:-}" in
+--version) echo "1.19.0"; exit 0 ;;
+auth)
+	case "${2:-}" in
+	list | ls)
+		case "${FAKE_AUTH:-ok}" in
+		ok) printf '\n%s[0m┌  Credentials %s[90m~/.local/share/opencode/auth.json\n│\n●  Anthropic %s[90mapi\n●  OpenAI %s[90moauth\n│\n└  2 credentials\n' "$esc" "$esc" "$esc" "$esc" ;;
+		env) printf '\n┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n\n┌  Environment\n│\n●  Anthropic ANTHROPIC_API_KEY\n│\n└  1 environment variable\n' ;;
+		none) printf '\n┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n' ;;
+		broken) echo "Error: failed to read auth.json" >&2; exit 1 ;;
+		esac
+		exit 0 ;;
+	login) echo "fake opencode login: $*"; exit "${FAKE_LOGIN_EXIT:-0}" ;;
+	esac
+	echo "unknown auth command" >&2; exit 1 ;;
+run) shift ;;
+*) echo "Error: the TUI is not supported in tests" >&2; exit 1 ;;
+esac
+fmt="" agent=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--format) fmt=$2; shift ;;
+	--agent) agent=$2; shift ;;
+	--model | -m | --variant) shift ;;
+	-*) echo "error: unknown option $1" >&2; exit 1 ;;
+	*) echo "error: the message must come on stdin in tests, got argument $1" >&2; exit 1 ;;
+	esac
+	shift
+done
+[ "$fmt" = json ] || { echo "error: expected --format json" >&2; exit 1; }
+[ "$agent" = plan ] || { echo "error: expected --agent plan" >&2; exit 1; }
+prompt=$(cat)
+[ -n "${FAKE_STDIN:-}" ] && printf '%s' "$prompt" > "$FAKE_STDIN"
+start='{"type":"step_start","timestamp":1,"sessionID":"ses_1","part":{"id":"prt_1","type":"step-start"}}'
+finish='{"type":"step_finish","timestamp":3,"sessionID":"ses_1","part":{"id":"prt_3","reason":"stop","type":"step-finish","cost":0}}'
+case "${FAKE_MODE:-ok}" in
+ok)
+	echo "$start"
+	printf '{"type":"text","timestamp":2,"sessionID":"ses_1","part":{"id":"prt_2","type":"text","text":"opencode read %s bytes"}}\n' "${#prompt}"
+	echo "$finish" ;;
+multi)
+	echo "$start"
+	echo '{"type":"text","timestamp":2,"sessionID":"ses_1","part":{"type":"text","text":"Let me look at the code first."}}'
+	echo '{"type":"tool_use","timestamp":2,"sessionID":"ses_1","part":{"type":"tool","tool":"read","state":{"status":"completed"}}}'
+	echo '{"type":"step_finish","timestamp":2,"sessionID":"ses_1","part":{"reason":"tool-calls","type":"step-finish"}}'
+	echo "$start"
+	echo '{"type":"text","timestamp":3,"sessionID":"ses_1","part":{"type":"text","text":"final answer"}}'
+	echo "$finish" ;;
+error) echo '{"type":"error","timestamp":1,"sessionID":"ses_1","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"invalid x-api-key"}}}'; exit 1 ;;
+malformed) echo 'INFO starting server'; echo '{"type":"text","part":{"te' ;;
+notext) echo "$start"; echo "$finish" ;;
+fail) echo "Error: Model not found: nope/nope" >&2; exit 1 ;;
+hang) sleep 30 & echo $! > "$FAKE_CHILD"; wait ;;
+esac

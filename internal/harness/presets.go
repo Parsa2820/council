@@ -1,11 +1,10 @@
 package harness
 
 import (
-	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,15 +13,15 @@ import (
 const (
 	KindCodex       = "codex"
 	KindClaude      = "claude"
-	KindGemini      = "gemini"
 	KindAntigravity = "antigravity"
+	KindOpenCode    = "opencode"
 	KindGeneric     = "generic"
 )
 
 var kindAliases = map[string]string{
 	"agy":         KindAntigravity,
 	"claude-code": KindClaude,
-	"gemini-cli":  KindGemini,
+	"open-code":   KindOpenCode,
 	"openai":      KindCodex,
 	"custom":      KindGeneric,
 }
@@ -38,7 +37,7 @@ func CanonicalKind(k string) string {
 
 // BuiltinKinds lists the kinds with presets, sorted.
 func BuiltinKinds() []string {
-	ks := []string{KindCodex, KindClaude, KindGemini, KindAntigravity}
+	ks := []string{KindCodex, KindClaude, KindAntigravity, KindOpenCode}
 	sort.Strings(ks)
 	return ks
 }
@@ -58,19 +57,28 @@ func BuiltinKinds() []string {
 //     --output-format json returns {"type":"result","is_error":bool,"result":"..."}.
 //     --no-session-persistence keeps runs out of the resume list.
 //     Auth: `claude auth login`, status via `claude auth status` (exit 0/1).
-//   - Gemini CLI: `gemini -p` runs non-interactively; -p text is appended to
-//     stdin input. --output-format json returns {"response": "...", "stats":
-//     {...}} or {"error": {...}}. Auth: interactive `gemini` (Login with
-//     Google) or GEMINI_API_KEY / Vertex AI env vars; there is no status
-//     subcommand, so cached-credential files and env vars are inspected.
 //   - Antigravity CLI (`agy`): `agy -p` is headless/print mode with
 //     --output-format text|json|stream-json. We use the documented
 //     `--input-format stream-json --output-format stream-json` session mode,
 //     which reads {"event":"user","message":{"content":...}} lines on stdin
 //     (avoiding OS argument-length limits on long transcripts) and ends each
 //     turn with {"event":"result","result":{"status":..,"response":..}}.
-//     Auth: interactive `agy` (OS keyring / Google sign-in), GEMINI_API_KEY
-//     with modelProvider=gemini, or ADC with AGY_ADC_AUTH=true.
+//     Auth: interactive `agy` (Google sign-in stored in the OS keyring), or
+//     GEMINI_API_KEY with "modelProvider": "gemini" in settings.json. There
+//     is no auth or status subcommand, but `agy models` needs a session: it
+//     exits 1 with "Please sign in to view available models" when signed out
+//     (or with a GEMINI_API_KEY error in API-key mode) and lists the models
+//     with exit 0 otherwise. It costs no tokens, so it is the status check.
+//   - OpenCode (`opencode`, sst/opencode): `opencode run` is the
+//     non-interactive mode. With no message arguments it reads the message
+//     from stdin; --format json prints NDJSON events, the reply in
+//     {"type":"text","part":{"text":...}} and failures as
+//     {"type":"error","error":{"data":{"message":...}}}. --agent plan is the
+//     built-in read-only agent (no file edits or shell commands). -m/--model
+//     takes provider/model. Auth: `opencode auth login` stores provider keys
+//     in ~/.local/share/opencode/auth.json; `opencode auth list` lists them
+//     and provider env vars (it always exits 0, so its output is parsed).
+//     With no credentials OpenCode still works with its free Zen models.
 func Preset(kind string) (Spec, bool) {
 	switch CanonicalKind(kind) {
 	case KindCodex:
@@ -106,22 +114,6 @@ func Preset(kind string) (Spec, bool) {
 			LoginNote:  "Signs in to your Anthropic account. Pass `-- --console` for API billing or `-- --sso` for SSO.",
 			StatusArgs: []string{"auth", "status"},
 		}, true
-	case KindGemini:
-		return Spec{
-			Kind:    KindGemini,
-			Command: "gemini",
-			Args: []string{"--output-format", "json", "{{model_args}}", "{{extra_args}}",
-				"-p", "Respond to the request above (provided on standard input)."},
-			ModelFlag:  "--model",
-			PromptMode: PromptStdin,
-			Output:     OutputJSON,
-			JSONPath:   "response",
-			ErrorPath:  "error",
-			Timeout:    10 * time.Minute,
-			LoginArgs:  []string{},
-			LoginNote:  "Starts Gemini CLI interactively: choose \"Login with Google\", finish in the browser, then type /quit. Alternatively export GEMINI_API_KEY.",
-			statusFunc: geminiAuth,
-		}, true
 	case KindAntigravity:
 		return Spec{
 			Kind:          KindAntigravity,
@@ -135,47 +127,98 @@ func Preset(kind string) (Spec, bool) {
 			ErrorPath:     "result.error",
 			Timeout:       10 * time.Minute,
 			LoginArgs:     []string{},
-			LoginNote:     "Starts Antigravity CLI interactively; it signs in via the OS keyring or a Google sign-in (prints a URL over SSH). Type /quit when done. For CI use GEMINI_API_KEY + modelProvider=gemini, or AGY_ADC_AUTH=true.",
-			statusFunc:    antigravityAuth,
+			LoginNote:     "Starts Antigravity CLI interactively: sign in with Google (over SSH it prints a URL), then type /quit. The session is kept in the OS keyring. For CI, export GEMINI_API_KEY and set \"modelProvider\": \"gemini\" in ~/.gemini/antigravity-cli/settings.json.",
+			StatusArgs:    []string{"models"},
+			statusParse:   antigravityStatus,
+		}, true
+	case KindOpenCode:
+		return Spec{
+			Kind:        KindOpenCode,
+			Command:     "opencode",
+			Args:        []string{"run", "--format", "json", "--agent", "plan", "{{model_args}}", "{{extra_args}}"},
+			ModelFlag:   "--model",
+			PromptMode:  PromptStdin,
+			Output:      OutputJSONL,
+			JSONPath:    "part.text",
+			ErrorPath:   "error.data.message",
+			Timeout:     10 * time.Minute,
+			LoginArgs:   []string{"auth", "login"},
+			LoginNote:   "Adds a provider API key or sign-in, stored in ~/.local/share/opencode/auth.json. Pass `-- --provider anthropic` to skip the provider list. Without any provider OpenCode uses its free OpenCode Zen models.",
+			StatusArgs:  []string{"auth", "list"},
+			statusParse: openCodeStatus,
 		}, true
 	}
 	return Spec{}, false
 }
 
-func home() string { h, _ := os.UserHomeDir(); return h }
+const geminiRemoved = "the gemini harness was removed in council v0.2.1 because Gemini CLI is deprecated; use `harness: antigravity` (Google's Antigravity CLI, agy) or `harness: generic` instead"
 
-func fileExists(p string) bool { st, err := os.Stat(p); return err == nil && !st.IsDir() }
-
-func geminiAuth(context.Context) (AuthState, string) {
-	for _, k := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"} {
-		if os.Getenv(k) != "" {
-			return AuthOK, k + " is set"
-		}
+// Removed reports whether kind names a built-in harness that no longer
+// exists, and what to use instead.
+func Removed(kind string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "gemini", "gemini-cli":
+		return geminiRemoved, true
 	}
-	if os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "true" {
-		return AuthOK, "Vertex AI mode (GOOGLE_GENAI_USE_VERTEXAI=true)"
-	}
-	if p := filepath.Join(home(), ".gemini", "oauth_creds.json"); fileExists(p) {
-		return AuthOK, "cached Google login at " + p
-	}
-	return AuthMissing, "no GEMINI_API_KEY and no cached login (~/.gemini/oauth_creds.json); run `council login gemini`"
+	return "", false
 }
 
-func antigravityAuth(context.Context) (AuthState, string) {
-	settings := filepath.Join(home(), ".gemini", "antigravity-cli", "settings.json")
-	if b, err := os.ReadFile(settings); err == nil {
-		var s struct {
-			ModelProvider string `json:"modelProvider"`
-		}
-		if json.Unmarshal(b, &s) == nil && s.ModelProvider == "gemini" {
-			if os.Getenv("GEMINI_API_KEY") != "" {
-				return AuthOK, "Gemini API key (modelProvider=gemini, GEMINI_API_KEY set)"
-			}
-			return AuthMissing, "modelProvider=gemini but GEMINI_API_KEY is not set"
+// antigravityStatus interprets `agy models`: exit 0 lists the models
+// available to the signed-in account (or API key), one "slug<TAB>name" per
+// line; otherwise the last line says why, e.g. "Error: Please sign in to
+// view available models. Launch the CLI without arguments to sign in."
+func antigravityStatus(out string, err error) (AuthState, string) {
+	models, last := 0, ""
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		switch {
+		case l == "" || strings.HasPrefix(l, "Fetching "):
+		case strings.Contains(l, "\t"):
+			models++
+		default:
+			last = l
 		}
 	}
-	if os.Getenv("AGY_ADC_AUTH") == "true" {
-		return AuthOK, "Application Default Credentials (AGY_ADC_AUTH=true)"
+	if err != nil {
+		if last == "" {
+			last = err.Error()
+		}
+		return AuthMissing, strings.TrimPrefix(last, "Error: ")
 	}
-	return AuthUnknown, "agy keeps its session in the OS keyring and has no documented status command; run `council doctor --probe` to verify"
+	if models == 0 {
+		return AuthOK, "signed in"
+	}
+	return AuthOK, fmt.Sprintf("signed in (%d models available)", models)
+}
+
+var (
+	ansiRE  = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+	countRE = regexp.MustCompile(`(\d+) (credentials?|environment variables?)\b`)
+)
+
+// openCodeStatus interprets `opencode auth list`, which exits 0 whether or
+// not anything is configured and ends its sections with "N credentials" and
+// "N environment variable(s)". OpenCode works without any provider (its free
+// OpenCode Zen models), so having none is reported as usable, with a hint.
+func openCodeStatus(out string, err error) (AuthState, string) {
+	out = ansiRE.ReplaceAllString(out, "")
+	if err != nil {
+		if l := firstLine(out); l != "" {
+			return AuthMissing, l
+		}
+		return AuthMissing, err.Error()
+	}
+	creds, envs := 0, 0
+	for _, m := range countRE.FindAllStringSubmatch(out, -1) {
+		n, _ := strconv.Atoi(m[1])
+		if strings.HasPrefix(m[2], "credential") {
+			creds += n
+		} else {
+			envs += n
+		}
+	}
+	if creds+envs == 0 {
+		return AuthOK, "no provider configured: only OpenCode's free models (run `council login opencode` to add one)"
+	}
+	return AuthOK, fmt.Sprintf("%d stored credential(s), %d provider environment variable(s)", creds, envs)
 }
