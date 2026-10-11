@@ -71,9 +71,9 @@ tests that need `/bin/sh`:
 | `internal/cli` | 98.9% | 70.3% |
 | `internal/config` | 99.3% | 99.3% |
 | `internal/consensus` | 100.0% | 100.0% |
-| `internal/harness` | 99.6% | 71.2% |
-| `internal/web` | 99.2% to 99.6% | 73.7% |
-| **total** | **99.5%** | **82.1%** |
+| `internal/harness` | 99.6% | 71.0% |
+| `internal/web` | 99.6% | 70.6% |
+| **total** | **99.5%** | **81.3%** |
 
 What is left uncovered is defensive code that cannot fail in practice: the
 panic in `config.Default` if the embedded `DefaultYAML` were invalid, the
