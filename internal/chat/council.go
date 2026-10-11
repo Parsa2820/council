@@ -187,6 +187,11 @@ func (c *Council) Run(ctx context.Context, question string) (*Result, error) {
 	if c.opts.Moderator != nil {
 		c.moderate(ctx, res, tr, final)
 	}
+	if strings.TrimSpace(res.Answer) == "" {
+		// Only reachable with a moderator: no agent voted and the moderator
+		// failed (or replied with nothing), so there is no answer to give.
+		return c.finish(res, tr, latest), errors.New("no agent produced a parsable vote block and the moderator gave no answer")
+	}
 	return c.finish(res, tr, latest), nil
 }
 

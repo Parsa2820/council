@@ -299,7 +299,7 @@ shown as the explanation.
 | Nobody ever voted and there is no moderator | Fails with `no agent produced a parsable vote block`, exit 1. |
 | Moderator fails | Note `moderator X failed (…); fell back to majority vote`; the consensus or majority result stands. |
 | Moderator replies without a vote | Its whole reply becomes the answer, with a note. |
-| No votes at all and the moderator also fails | The run "succeeds" with an empty answer and method `none`, plus the moderator note. |
+| No votes at all and the moderator also fails | Fails with `no agent produced a parsable vote block and the moderator gave no answer`, exit 1. The result (with the moderator note) is still in the partial transcript. |
 | Ctrl-C / SIGTERM | The context is cancelled and running subprocesses are killed. `council ask` exits 1 with `context canceled` (or `round N: every agent failed (first error: …context canceled)` if a round was in progress). The partial transcript is written if `--transcript` was given. |
 | Invalid config | Fails before any agent runs, with the file path and the reason. See [CONFIGURATION.md](CONFIGURATION.md#validation). |
 

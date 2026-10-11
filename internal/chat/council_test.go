@@ -288,3 +288,16 @@ func TestValidation(t *testing.T) {
 		t.Fatal("empty question should fail")
 	}
 }
+
+func TestNoVotesAndModeratorFailureIsAnError(t *testing.T) {
+	novote := fake("a", func(int, string) (string, error) { return "I have thoughts but no vote block.", nil })
+	mod := fake("m", func(int, string) (string, error) { return "", errors.New("moderator down") })
+	c, _ := New([]harness.Harness{novote}, Options{Rounds: 1, Moderator: mod})
+	res, err := c.Run(context.Background(), "q")
+	if err == nil || !strings.Contains(err.Error(), "moderator gave no answer") {
+		t.Fatalf("want error, got answer %q err %v", res.Answer, err)
+	}
+	if res == nil || len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "moderator down") {
+		t.Fatalf("result should still carry the transcript and notes: %+v", res)
+	}
+}

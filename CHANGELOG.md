@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- `council ask` no longer exits 0 with an empty answer when no agent produced
+  a vote block and the moderator failed; it now reports an error.
+
 ## [0.1.0] - 2026-10-10
 
 First release.
