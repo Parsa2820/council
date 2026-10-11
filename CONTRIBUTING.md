@@ -61,17 +61,18 @@ make cover                       # coverage per package, per function and total
 make cover-html                  # the same, annotated line by line in the browser
 ```
 
-Coverage on Linux and macOS (`make cover`, October 2026):
+Statement coverage (`make cover` and CI, October 2026). Windows skips the
+tests that need `/bin/sh`:
 
-| Package | Statements covered |
-|---|---|
-| `cmd/council` | 100.0% |
-| `internal/chat` | 100.0% |
-| `internal/cli` | 99.7% |
-| `internal/config` | 99.3% |
-| `internal/consensus` | 100.0% |
-| `internal/harness` | 99.6% |
-| **total** | **99.7%** |
+| Package | Linux and macOS | Windows |
+|---|---|---|
+| `cmd/council` | 100.0% | 100.0% |
+| `internal/chat` | 100.0% | 100.0% |
+| `internal/cli` | 99.7% | 66.6% |
+| `internal/config` | 99.3% | 99.3% |
+| `internal/consensus` | 100.0% | 100.0% |
+| `internal/harness` | 99.6% | 71.2% |
+| **total** | **99.7%** | **83.5%** |
 
 What is left uncovered is defensive code that cannot fail in practice: the
 panic in `config.Default` if the embedded `DefaultYAML` were invalid, the
