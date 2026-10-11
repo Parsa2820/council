@@ -222,7 +222,7 @@ make zip        # dist/ zipped into ../council-binaries.zip
 The unit tests need no LLM CLI, network or credentials: the built-in
 harnesses are tested against fake `codex`, `claude`, `agy`, `opencode`,
 `cursor-agent` and `pi` scripts. Statement coverage is 99.5% on Linux and macOS (every package at
-98.9% or more) and 81.3% on Windows, which skips the shell-script tests; see [CONTRIBUTING.md](CONTRIBUTING.md#tests) for details.
+98.9% or more) and 81.6% on Windows, which skips the shell-script tests; see [CONTRIBUTING.md](CONTRIBUTING.md#tests) for details.
 
 `make build` stamps the version from `git describe --tags --always --dirty`.
 Override it with `make build VERSION=v0.1.0`. Builds use `CGO_ENABLED=0` and
