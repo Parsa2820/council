@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="council-token" content="{{.Token}}">
+<title>council</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <h1>council</h1>
+  <span class="sub">LLM coding CLIs in a group chat until they agree</span>
+  <span class="cfg" id="config-path"></span>
+</header>
+
+<main class="layout">
+  <form id="run-form" class="panel controls" autocomplete="off">
+    <label for="prompt" class="label">Prompt</label>
+    <textarea id="prompt" name="prompt" rows="7" placeholder="Ask the council something, e.g. Which is faster in Go for 10 keys: a map or a slice scan?" required></textarea>
+
+    <fieldset class="agents">
+      <legend class="label">Agents <button type="button" id="refresh" class="link" title="Check install and sign-in status again">refresh status</button></legend>
+      <div id="agent-list" class="agent-list"><p class="muted">Loading agents…</p></div>
+    </fieldset>
+
+    <div class="row">
+      <label>Rounds <input type="number" id="rounds" min="1" max="10" value="3"></label>
+      <label>Moderator <select id="moderator"><option value="majority">majority vote</option></select></label>
+      <label>Turn timeout <input type="text" id="timeout" placeholder="agent default" pattern="[0-9]+(ms|s|m|h)([0-9]+(ms|s|m))*" title="A duration such as 90s or 5m"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="loose"> Count identical answers as consensus without explicit agreement</label>
+
+    <div class="buttons">
+      <button type="submit" id="run" class="primary">Run</button>
+      <button type="button" id="cancel" disabled>Cancel</button>
+      <button type="button" id="download" disabled>Download transcript (.md)</button>
+    </div>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+  </form>
+
+  <section class="panel chat" aria-label="Group chat">
+    <div id="error" class="error" role="alert" hidden></div>
+    <div id="final" class="final" hidden>
+      <h2>Consensus</h2>
+      <p class="answer" id="final-answer"></p>
+      <p class="meta" id="final-meta"></p>
+      <p class="people"><span class="for">Agreed: <b id="final-for"></b></span> <span class="against">Dissented: <b id="final-against"></b></span></p>
+      <details id="final-details-box"><summary>Reasoning</summary><div class="text" id="final-details"></div></details>
+      <ul id="final-notes" class="notes"></ul>
+    </div>
+    <div id="chat"><p class="muted empty">The discussion appears here as each agent replies.</p></div>
+  </section>
+</main>
+<footer class="foot">council {{.Version}} · runs locally; your CLIs use their own sign-in</footer>
+</body>
+</html>
