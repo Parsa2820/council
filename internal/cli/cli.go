@@ -16,12 +16,12 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"council/internal/chat"
-	"council/internal/config"
-	"council/internal/harness"
+	"github.com/Parsa2820/council/internal/chat"
+	"github.com/Parsa2820/council/internal/config"
+	"github.com/Parsa2820/council/internal/harness"
 )
 
-// Version is set at build time with -ldflags "-X council/internal/cli.Version=...".
+// Version is set at build time with -ldflags "-X github.com/Parsa2820/council/internal/cli.Version=...".
 var Version = "dev"
 
 // Env bundles the process streams so the CLI can be tested in-process.

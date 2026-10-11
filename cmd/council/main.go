@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"council/internal/cli"
+	"github.com/Parsa2820/council/internal/cli"
 )
 
 func main() {

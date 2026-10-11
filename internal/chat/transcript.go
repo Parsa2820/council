@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"council/internal/consensus"
+	"github.com/Parsa2820/council/internal/consensus"
 )
 
 // Role of a transcript message.

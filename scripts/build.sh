@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
 TARGETS=${TARGETS:-"darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64"}
 OUT=${OUT:-dist}
-LDFLAGS="-s -w -X council/internal/cli.Version=${VERSION}"
+LDFLAGS="-s -w -X github.com/Parsa2820/council/internal/cli.Version=${VERSION}"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"

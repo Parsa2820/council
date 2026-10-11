@@ -15,7 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"council/internal/harness"
+	"github.com/Parsa2820/council/internal/harness"
 )
 
 // Duration is a time.Duration that unmarshals from strings like "90s" or "10m".

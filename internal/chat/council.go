@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"council/internal/consensus"
-	"council/internal/harness"
+	"github.com/Parsa2820/council/internal/consensus"
+	"github.com/Parsa2820/council/internal/harness"
 )
 
 // EventKind identifies a live progress event.

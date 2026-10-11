@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"council/internal/harness"
+	"github.com/Parsa2820/council/internal/harness"
 )
 
 func TestDefaultConfig(t *testing.T) {

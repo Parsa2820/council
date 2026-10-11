@@ -8,7 +8,7 @@ BIN     ?= council
 all: vet test build
 
 build:
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X council/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/council
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X github.com/Parsa2820/council/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/council
 
 test:
 	$(GO) test ./...

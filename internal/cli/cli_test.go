@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"council/internal/chat"
+	"github.com/Parsa2820/council/internal/chat"
 )
 
 // fakeConfig writes a config whose agents are examples/fake-agent.sh run
