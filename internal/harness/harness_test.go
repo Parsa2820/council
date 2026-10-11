@@ -248,3 +248,12 @@ func TestLoginCommand(t *testing.T) {
 		t.Fatalf("generic without login should be nil, got %q", argv)
 	}
 }
+
+func TestRunJSONNullAnswerIsNoAnswer(t *testing.T) {
+	needSh(t)
+	h, _ := New("a", Spec{Command: script(t, `echo '{"response":null,"stats":{}}'`), Output: OutputJSON, JSONPath: "response"})
+	got, err := h.Run(context.Background(), "x")
+	if err == nil || !strings.Contains(err.Error(), `no answer in output: JSON path "response" is null`) {
+		t.Fatalf("a null answer must not become the text \"null\": got %q %v", got, err)
+	}
+}

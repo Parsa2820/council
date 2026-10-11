@@ -261,6 +261,9 @@ func (h *CommandHarness) extract(doc any) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%w: JSON path %q not found", errNoAnswer, h.spec.JSONPath)
 	}
+	if v == nil {
+		return "", fmt.Errorf("%w: JSON path %q is null", errNoAnswer, h.spec.JSONPath)
+	}
 	s := strings.TrimSpace(stringify(v))
 	if s == "" {
 		return "", errNoAnswer

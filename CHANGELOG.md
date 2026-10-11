@@ -15,6 +15,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   no longer cuts a multi-byte UTF-8 character in half.
 - Answer normalization strips quotes and trailing punctuation in any order,
   so `"Paris".` now matches `Paris`.
+- A JSON harness whose answer field is `null` (for example Gemini CLI's
+  `"response": null`) is reported as "no answer" instead of answering the
+  literal text `null`.
 
 ## [0.1.0] - 2026-10-10
 
