@@ -68,17 +68,22 @@ tests that need `/bin/sh`:
 |---|---|---|
 | `cmd/council` | 100.0% | 100.0% |
 | `internal/chat` | 100.0% | 100.0% |
-| `internal/cli` | 99.7% | 66.6% |
+| `internal/cli` | 98.9% | 70.3% |
 | `internal/config` | 99.3% | 99.3% |
 | `internal/consensus` | 100.0% | 100.0% |
 | `internal/harness` | 99.6% | 71.2% |
-| **total** | **99.7%** | **83.5%** |
+| `internal/web` | 99.2% to 99.6% | 73.7% |
+| **total** | **99.5%** | **82.1%** |
 
 What is left uncovered is defensive code that cannot fail in practice: the
 panic in `config.Default` if the embedded `DefaultYAML` were invalid, the
 error from writing the prompt into a temp dir that `Run` has just created,
-and the `cfg.Harness` error in `council agents` for a config that already
-passed validation. CI writes the same table for each OS to the job summary
+the `cfg.Harness` error in `council agents` for a config that already
+passed validation, the template parse error for the embedded page, and the
+`web.New` error in `council serve` (which needs a broken random source).
+`internal/web` varies slightly between runs because a few branches (an
+event arriving just as a run is cancelled, a keep-alive tick) depend on
+timing. CI writes the same table for each OS to the job summary
 and fails on Linux and macOS if the total drops below 90%.
 
 | Package | What the tests cover | How |
@@ -88,7 +93,8 @@ and fails on Linux and macOS if the total drops below 90%.
 | `internal/harness` | JSON paths, argument templating, `stdin_template`, spec validation and defaults, every prompt mode and output format, `error_path`, null and empty answers, non-zero exits, stderr tails, cancellation, timeouts that kill the whole process tree, env, workdir, doctor checks, the gemini and agy credential probes, login commands | the fake CLIs below, plus small generated shell scripts |
 | `internal/config` | durations, path resolution (`$COUNCIL_CONFIG`, `$XDG_CONFIG_HOME`, `config.yml`, `config`), load and parse errors, unknown fields, validation, preset overrides, `~` and `$VAR` expansion, `init` with and without `--force` | YAML snippets |
 | `internal/chat` | convergence, early stop in round 1, prompts and the moderator prompt, transcript rendering (`Discussion`, `Markdown`), event order, majority fallback, quorum, explicit agreement, moderator synthesis, fallback and replies without a vote, failing agents, abstentions, concurrency, turn timeouts, cancellation | in-process fakes (`harness.Func`) |
-| `internal/cli` | every command and flag of `ask`, `init`, `doctor`/`status` (table, `--json`, `--probe`), `login` (extra args, failures), `agents`, `version`, `help`, exit codes, prompt sources, the live printer and result line | `examples/fake-agent.sh` through the generic harness, and the fake CLIs below |
+| `internal/cli` | every command and flag of `ask`, `init`, `doctor`/`status` (table, `--json`, `--probe`), `login` (extra args, failures), `agents`, `serve` (flags, URL, `--open`, the non-loopback warning, shutdown, listener errors), `version`, `help`, exit codes, prompt sources, the live printer and result line | `examples/fake-agent.sh` through the generic harness, and the fake CLIs below; `serve` on port 0 with `openBrowser` and `listen` replaced |
+| `internal/web` | the page, static assets and security headers, the Host check, every CSRF check (`Sec-Fetch-Site`, `Origin`, content type, token), `/api/agents` with and without status, input validation, an SSE run through to consensus, moderator runs, failing runs, cancellation by endpoint and by disconnect, the run limit, keep-alives, event encoding, the browser opener | `httptest` servers running `examples/fake-agent.sh` |
 
 Tests that need `/bin/sh` call `t.Skip` on Windows, so `go test ./...` passes
 there but covers less. CI runs the suite on Linux, macOS and Windows.
