@@ -45,6 +45,10 @@ type Options struct {
 	StatusTimeout time.Duration
 	// Heartbeat is the interval of SSE keep-alive comments (default 15s).
 	Heartbeat time.Duration
+	// StatusTTL is how long an agent's install/sign-in status is cached
+	// (default 3m), so reloading the page does not rerun every check.
+	// GET /api/agents?refresh=1 checks again.
+	StatusTTL time.Duration
 }
 
 // Server is the web UI's http.Handler.
@@ -57,6 +61,36 @@ type Server struct {
 
 	mu   sync.Mutex
 	runs map[string]context.CancelFunc
+
+	statusMu sync.Mutex
+	statuses map[string]cachedStatus
+}
+
+type cachedStatus struct {
+	st harness.Status
+	at time.Time
+}
+
+var now = time.Now
+
+// check returns h's status, from the cache when it is fresh. The key covers
+// everything the check depends on, so editing the config invalidates it.
+func (s *Server) check(ctx context.Context, h *harness.CommandHarness, refresh bool) harness.Status {
+	sp := h.Spec()
+	key := strings.Join(append([]string{h.Name(), sp.Kind, sp.Command}, sp.StatusArgs...), "\x00")
+	s.statusMu.Lock()
+	c, ok := s.statuses[key]
+	s.statusMu.Unlock()
+	if ok && !refresh && now().Sub(c.at) < s.opts.StatusTTL {
+		return c.st
+	}
+	st := h.Check(ctx)
+	if ctx.Err() == nil { // do not cache a check cut short by the timeout
+		s.statusMu.Lock()
+		s.statuses[key] = cachedStatus{st, now()}
+		s.statusMu.Unlock()
+	}
+	return st
 }
 
 // New returns a Server. It fails only if the embedded assets are broken or
@@ -74,6 +108,9 @@ func New(opts Options) (*Server, error) {
 	if opts.Heartbeat <= 0 {
 		opts.Heartbeat = 15 * time.Second
 	}
+	if opts.StatusTTL <= 0 {
+		opts.StatusTTL = 3 * time.Minute
+	}
 	tok, err := newToken()
 	if err != nil {
 		return nil, err
@@ -82,7 +119,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, token: tok, page: page, slots: make(chan struct{}, opts.MaxRuns), runs: map[string]context.CancelFunc{}}
+	s := &Server{opts: opts, token: tok, page: page, slots: make(chan struct{}, opts.MaxRuns), runs: map[string]context.CancelFunc{}, statuses: map[string]cachedStatus{}}
 	sub, _ := fs.Sub(staticFS, "static")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
@@ -235,6 +272,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	names := agentNames(cfg)
 	resp.Agents = make([]AgentInfo, len(names))
 	check := r.URL.Query().Get("status") != "0"
+	refresh := r.URL.Query().Get("refresh") == "1"
 	ctx, cancel := context.WithTimeout(r.Context(), s.opts.StatusTimeout)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -254,7 +292,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(i int, h *harness.CommandHarness) {
 			defer wg.Done()
-			resp.Agents[i].Status = h.Check(ctx)
+			resp.Agents[i].Status = s.check(ctx, h, refresh)
 		}(i, h)
 	}
 	wg.Wait()

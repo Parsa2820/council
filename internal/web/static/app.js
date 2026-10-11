@@ -3,7 +3,7 @@
 
 const $ = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="council-token"]').content;
-const state = { run: null, colors: {}, transcript: "", round: 0, pending: new Set() };
+const state = { run: null, colors: {}, transcript: "", round: 0, pending: new Set(), moderator: "majority", agentKey: undefined };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -26,48 +26,79 @@ function showError(text) {
 }
 
 function badge(a) {
+  if (a.checking) return ["checking", "checking…"];
   if (!a.installed) return ["absent", "not installed"];
   if (a.auth === "ok") return ["ok", "ready"];
   if (a.auth === "missing") return ["missing", "signed out"];
   return ["unknown", "status unknown"];
 }
 
-async function loadAgents(withStatus) {
+function setBadge(row, a) {
+  let b = row.querySelector(".badge");
+  if (!b) { b = el("span"); row.append(b); }
+  const [cls, text] = badge(a);
+  b.className = "badge " + cls;
+  b.textContent = text;
+  b.title = a.checking ? "Checking install and sign-in status…" : [a.version, a.detail].filter(Boolean).join(" · ");
+  // Say why an agent is not ready, e.g. "Please sign in to view available models".
+  let why = row.querySelector(".why");
+  const show = !a.checking && cls !== "ok" && a.detail;
+  if (show && !why) { why = el("span", "why"); row.append(why); }
+  if (why) { why.hidden = !show; why.textContent = show ? a.detail : ""; }
+}
+
+// renderAgents builds the agent checkboxes and the moderator list. It only
+// runs when the set of agents changes, so status updates never rebuild the
+// <select> (which would close it while the user has it open) and never
+// touch the user's choices.
+function renderAgents(body) {
   const list = $("agent-list");
+  const first = state.agentKey === undefined;
+  const checked = new Set([...list.querySelectorAll("input:checked")].map((i) => i.value));
+  list.replaceChildren();
+  for (const a of body.agents) {
+    const row = el("label", "agent");
+    row.dataset.agent = a.agent;
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = a.agent;
+    box.checked = first ? a.default : checked.has(a.agent);
+    row.append(box, el("span", "name", a.agent), el("span", "kind", a.kind || ""));
+    setBadge(row, { checking: true });
+    list.append(row);
+  }
+  if (!body.agents.length) list.append(el("p", "muted", "No agents configured. Run council init."));
+
+  // Any configured agent can moderate, whether or not it also takes part.
+  const mod = $("moderator");
+  if (first) state.moderator = body.defaults.moderator;
+  mod.replaceChildren(new Option("majority vote", "majority"));
+  for (const a of body.agents) mod.append(new Option(a.agent, a.agent));
+  mod.value = [...mod.options].some((o) => o.value === state.moderator) ? state.moderator : "majority";
+  if (first) {
+    $("rounds").value = body.defaults.rounds;
+    $("timeout").placeholder = "agent default (" + body.defaults.timeout + ")";
+  }
+  state.agentKey = body.agents.map((a) => a.agent).join("\n");
+}
+
+async function loadAgents(withStatus, refresh) {
+  const list = $("agent-list");
+  if (withStatus) list.querySelectorAll(".agent").forEach((row) => setBadge(row, { checking: true }));
   try {
-    const res = await fetch("/api/agents" + (withStatus ? "" : "?status=0"));
+    const q = withStatus ? (refresh ? "?refresh=1" : "") : "?status=0";
+    const res = await fetch("/api/agents" + q);
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || res.statusText);
-    const checked = new Set([...list.querySelectorAll("input:checked")].map((i) => i.value));
-    const first = list.querySelector("input") === null;
-    list.replaceChildren();
     $("config-path").textContent = "config: " + body.config;
-    const mod = $("moderator");
-    const current = mod.value || body.defaults.moderator;
-    mod.replaceChildren(new Option("majority vote", "majority"));
+    if (body.agents.map((a) => a.agent).join("\n") !== state.agentKey) renderAgents(body);
+    if (!withStatus) return;
     for (const a of body.agents) {
-      const row = el("label", "agent");
-      const box = el("input");
-      box.type = "checkbox";
-      box.value = a.agent;
-      box.checked = first ? a.default : checked.has(a.agent);
-      row.append(box, el("span", "name", a.agent), el("span", "kind", a.kind || ""));
-      if (withStatus) {
-        const [cls, text] = badge(a);
-        const b = el("span", "badge " + cls, text);
-        b.title = [a.version, a.detail].filter(Boolean).join(" · ");
-        row.append(b);
-      }
-      list.append(row);
-      mod.append(new Option(a.agent, a.agent));
+      const row = list.querySelector('.agent[data-agent="' + CSS.escape(a.agent) + '"]');
+      if (row) setBadge(row, a);
     }
-    mod.value = [...mod.options].some((o) => o.value === current) ? current : "majority";
-    if (first) {
-      $("rounds").value = body.defaults.rounds;
-      $("timeout").placeholder = "agent default (" + body.defaults.timeout + ")";
-    }
-    if (!body.agents.length) list.append(el("p", "muted", "No agents configured. Run council init."));
   } catch (err) {
+    state.agentKey = undefined;
     list.replaceChildren(el("p", "error", "Could not load agents: " + err.message));
   }
 }
@@ -124,14 +155,15 @@ function showResult(r) {
   $("final").classList.toggle("split", !r.converged);
   $("final").querySelector("h2").textContent = r.converged ? "Consensus" : "No full consensus: decided by " + r.method;
   $("final-answer").textContent = r.answer;
-  let meta = "Method: " + r.method + (r.moderator ? " (" + r.moderator + ")" : "") + " · " + r.rounds + " round(s)";
+  let meta = "Method: " + r.method + (r.method === "moderator" ? " (" + r.moderator + ")" : "") + " · " + r.rounds + " round(s)";
+  if (r.moderator && r.method !== "moderator") meta += " · moderator " + r.moderator + " failed, so the majority vote stands";
   $("final-meta").textContent = meta;
   $("final-for").textContent = r.supporters.join(", ") || "nobody";
   $("final-against").textContent = r.dissenters.join(", ") || "nobody";
   $("final-details").textContent = r.details || "";
   $("final-details-box").hidden = !r.details || r.details.trim() === r.answer.trim();
   const notes = $("final-notes");
-  notes.replaceChildren(...(r.notes || []).map((n) => el("li", "", n)));
+  notes.replaceChildren(...(r.notes || []).map((n) => el("li", /^moderator .* failed/.test(n) ? "warn" : "", n)));
   $("final").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -143,7 +175,8 @@ function handle(name, data, agents) {
       data.agents.forEach(colorOf);
       if (data.moderator) colorOf(data.moderator);
       $("cancel").disabled = false;
-      setStatus("Running " + data.agents.join(", ") + " for up to " + data.rounds + " round(s)…");
+      setStatus("Running " + data.agents.join(", ") + " for up to " + data.rounds + " round(s), " +
+        (data.moderator ? "moderated by " + data.moderator : "decided by majority vote") + "…");
       break;
     case "round_start":
       state.round = data.round;
@@ -278,7 +311,8 @@ function download() {
 $("run-form").addEventListener("submit", run);
 $("cancel").addEventListener("click", cancel);
 $("download").addEventListener("click", download);
-$("refresh").addEventListener("click", () => loadAgents(true));
+$("refresh").addEventListener("click", () => loadAgents(true, true));
+$("moderator").addEventListener("change", (e) => { state.moderator = e.target.value; });
 $("prompt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("run-form").requestSubmit();
 });

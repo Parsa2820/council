@@ -28,11 +28,15 @@ textarea, input[type=text], input[type=number], select { width: 100%; padding: .
 textarea { resize: vertical; min-height: 7rem; }
 fieldset { border: 0; padding: 0; margin: .9rem 0; }
 .agent-list { display: grid; gap: .3rem; }
-.agent { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; }
+.agent { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; }
+.agent .why { flex-basis: 100%; padding-left: 1.6rem; font-size: .75rem; color: var(--muted); overflow-wrap: anywhere; }
 .agent .name { font-weight: 600; }
 .agent .kind { color: var(--muted); font-size: .85rem; }
 .badge { margin-left: auto; font-size: .78rem; padding: .05rem .45rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .badge.ok { color: var(--ok); } .badge.missing, .badge.absent { color: var(--bad); } .badge.unknown { color: var(--warn); }
+.badge.checking { color: var(--muted); border-style: dashed; }
+option { background: var(--panel); color: var(--fg); }
+.hint { display: block; margin-top: .2rem; font-size: .75rem; color: var(--muted); }
 .row { display: grid; grid-template-columns: 5rem 1fr 1fr; gap: .6rem; }
 .row label { font-size: .85rem; color: var(--muted); }
 .check { display: flex; gap: .4rem; align-items: center; margin: .7rem 0; font-size: .85rem; color: var(--muted); }
@@ -50,6 +54,7 @@ button.link { border: 0; background: none; padding: 0 0 0 .4rem; color: var(--ac
 .final .meta, .final .people { margin: .2rem 0; font-size: .9rem; }
 .people .for b { color: var(--ok); } .people .against b { color: var(--bad); } .people .against { margin-left: 1rem; }
 .notes { margin: .4rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .85rem; }
+.notes .warn { color: var(--bad); font-weight: 600; }
 .round-head { margin: 1rem 0 .5rem; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; align-items: center; gap: .6rem; }
 .round-head::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .round-head.first { margin-top: 0; }

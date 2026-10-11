@@ -17,6 +17,7 @@ import (
 	"github.com/Parsa2820/council/internal/chat"
 	"github.com/Parsa2820/council/internal/config"
 	"github.com/Parsa2820/council/internal/consensus"
+	"github.com/Parsa2820/council/internal/harness"
 )
 
 // fakeAgentConfig is a config whose agents run examples/fake-agent.sh.
@@ -183,7 +184,7 @@ func TestIndexAndStaticAssets(t *testing.T) {
 		want        []string
 	}{
 		{"/", "text/html", []string{`<meta name="council-token" content="` + s.Token() + `">`, "council v9.9.9", `src="/static/app.js"`, `id="prompt"`, `id="agent-list"`, `id="moderator"`, `id="cancel"`, `id="download"`}},
-		{"/static/app.js", "javascript", []string{`fetch("/api/run"`, "X-Council-Token", "transcript"}},
+		{"/static/app.js", "javascript", []string{`fetch("/api/run"`, "X-Council-Token", "transcript", "renderAgents", "refresh=1", "checking…", `$("moderator").addEventListener("change"`}},
 		{"/static/style.css", "text/css", []string{"prefers-color-scheme: dark", "@media (max-width"}},
 	}
 	for _, c := range cases {
@@ -672,5 +673,135 @@ func TestOpenBrowser(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	if err := OpenBrowser("http://x/"); err == nil {
 		t.Error("missing opener should fail")
+	}
+}
+
+// TestModeratorChoiceIsUsed is the regression test for "the moderator cannot
+// be selected": whatever the request names wins over the config default,
+// the moderator may also be a participant, and the result says so.
+func TestModeratorChoiceIsUsed(t *testing.T) {
+	needSh(t)
+	cfg := strings.Replace(fakeAgentConfig, "  timeout: 20s\n", "  timeout: 20s\n  moderator: judge\n", 1)
+	s, ts := newServer(t, Options{LoadConfig: loader(t, cfg)})
+	cases := []struct {
+		name, body, wantMod, wantMethod string
+	}{
+		{"participant as moderator", `{"prompt":"q","agents":["alpha","beta"],"rounds":1,"moderator":"alpha"}`, "alpha", "moderator"},
+		{"non-participant", `{"prompt":"q","agents":["alpha","beta"],"rounds":1,"moderator":"gamma"}`, "gamma", "moderator"},
+		{"config default", `{"prompt":"q","agents":["alpha","beta"],"rounds":1}`, "judge", "moderator"},
+		{"majority overrides the default", `{"prompt":"q","agents":["alpha","beta"],"rounds":1,"moderator":"majority"}`, "", "unanimous"},
+	}
+	for _, c := range cases {
+		res := post(t, s, ts, "/api/run", c.body, nil)
+		evs := readEvents(t, res.Body, nil)
+		res.Body.Close()
+		var mod, result map[string]any
+		for _, e := range evs {
+			if e.Name == "message" && e.Data["role"] == "moderator" {
+				mod = e.Data
+			}
+			if e.Name == "result" {
+				result = e.Data
+			}
+		}
+		if evs[0].Data["moderator"] != c.wantMod || result == nil || result["method"] != c.wantMethod {
+			t.Errorf("%s: start %v result %v", c.name, evs[0].Data, result)
+			continue
+		}
+		if c.wantMod == "" {
+			if mod != nil || result["moderator"] != nil {
+				t.Errorf("%s: no moderator expected, got %v", c.name, mod)
+			}
+			continue
+		}
+		if mod == nil || mod["agent"] != c.wantMod || result["moderator"] != c.wantMod || !strings.Contains(mod["text"].(string), "As moderator ("+c.wantMod+")") {
+			t.Errorf("%s: moderator message %v, result %v", c.name, mod, result)
+		}
+	}
+}
+
+func TestModeratorFailureFallsBack(t *testing.T) {
+	needSh(t)
+	s, ts := newServer(t, Options{})
+	res := post(t, s, ts, "/api/run", `{"prompt":"q","agents":["alpha","beta"],"rounds":1,"moderator":"broken"}`, nil)
+	evs := readEvents(t, res.Body, nil)
+	res.Body.Close()
+	r := evs[len(evs)-2].Data
+	notes, _ := r["notes"].([]any)
+	if evs[len(evs)-2].Name != "result" || r["method"] != "unanimous" || r["moderator"] != "broken" || len(notes) != 1 || !strings.HasPrefix(notes[0].(string), "moderator broken failed") {
+		t.Fatalf("result %v", r)
+	}
+}
+
+// statusCounter is a generic agent whose status command counts its runs.
+func statusCounter(t *testing.T) (yaml, counter string) {
+	t.Helper()
+	dir := t.TempDir()
+	counter = filepath.Join(dir, "count")
+	script := filepath.Join(dir, "agent")
+	body := "#!/bin/sh\ncase \"$1\" in\n--version) echo v1 ;;\nwhoami) echo x >> " + counter + "; [ \"${SLOW_STATUS:-}\" ] && sleep 2; echo signed in ;;\nesac\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return "defaults: {agents: [c]}\nagents:\n  c: {command: " + script + ", status_args: [whoami]}\n", counter
+}
+
+func TestStatusCache(t *testing.T) {
+	needSh(t)
+	yaml, counter := statusCounter(t)
+	_, ts := newServer(t, Options{LoadConfig: loader(t, yaml), StatusTTL: time.Minute})
+	clock := time.Now()
+	old := now
+	t.Cleanup(func() { now = old })
+	now = func() time.Time { return clock }
+	get := func(q string) AgentInfo {
+		t.Helper()
+		res, err := ts.Client().Get(ts.URL + "/api/agents" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var body AgentsResponse
+		if err := json.NewDecoder(res.Body).Decode(&body); err != nil || len(body.Agents) != 1 {
+			t.Fatalf("%v %+v", err, body)
+		}
+		return body.Agents[0]
+	}
+	runs := func() int { b, _ := os.ReadFile(counter); return strings.Count(string(b), "x") }
+	for i, step := range []struct {
+		q       string
+		advance time.Duration
+		want    int
+	}{
+		{"", 0, 1},          // first check
+		{"", 0, 1},          // cached
+		{"?status=0", 0, 1}, // no check at all
+		{"?refresh=1", 0, 2},
+		{"", 59 * time.Second, 2}, // still fresh
+		{"", 2 * time.Second, 3},  // expired
+	} {
+		clock = clock.Add(step.advance)
+		a := get(step.q)
+		if runs() != step.want {
+			t.Errorf("step %d (%s): %d status runs, want %d", i, step.q, runs(), step.want)
+		}
+		if step.q != "?status=0" && (a.Auth != harness.AuthOK || a.Detail != "signed in") {
+			t.Errorf("step %d: %+v", i, a)
+		}
+	}
+}
+
+func TestStatusTimeoutIsNotCached(t *testing.T) {
+	needSh(t)
+	yaml, counter := statusCounter(t)
+	t.Setenv("SLOW_STATUS", "1")
+	s, ts := newServer(t, Options{LoadConfig: loader(t, yaml), StatusTimeout: 300 * time.Millisecond})
+	res, _ := ts.Client().Get(ts.URL + "/api/agents")
+	res.Body.Close()
+	s.statusMu.Lock()
+	n := len(s.statuses)
+	s.statusMu.Unlock()
+	if b, _ := os.ReadFile(counter); n != 0 || len(b) == 0 {
+		t.Errorf("a status check cut short by the timeout was cached (%d entries, ran %q)", n, b)
 	}
 }

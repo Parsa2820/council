@@ -5,6 +5,7 @@
 // exposes a JSON API:
 //
 //	GET  /api/agents             configured agents with install/sign-in status
+//	                             (cached for a few minutes; ?refresh=1 rechecks)
 //	POST /api/run                start a run; the response is a Server-Sent
 //	                             Events stream of chat events and the result
 //	POST /api/runs/{id}/cancel   cancel a running run
