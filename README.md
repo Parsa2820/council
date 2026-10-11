@@ -209,9 +209,15 @@ the Makefile and `scripts/build.sh`.
 git clone git@github.com:Parsa2820/council.git
 cd council
 make            # go vet, go test, then build ./council for this machine
+make cover      # unit tests with per-package and per-function coverage
 make dist       # cross-compile every release target into dist/ (+ SHA256SUMS)
 make zip        # dist/ zipped into ../council-binaries.zip
 ```
+
+The unit tests need no LLM CLI, network or credentials: the built-in
+harnesses are tested against fake `codex`, `claude`, `gemini` and `agy`
+scripts. Statement coverage is 99.7% on Linux and macOS (every package at
+99% or more); see [CONTRIBUTING.md](CONTRIBUTING.md#tests) for details.
 
 `make build` stamps the version from `git describe --tags --always --dirty`.
 Override it with `make build VERSION=v0.1.0`. Builds use `CGO_ENABLED=0` and
@@ -658,8 +664,8 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
 * `--timeout` can shorten turns but not extend them past an agent's `timeout`.
 * There is no memory between `council ask` runs.
 * The Go packages live under `internal/`, so other modules cannot import them.
-* The fake agent is a POSIX shell script; the tests that use it are skipped on
-  Windows.
+* The fake agent and the fake harness CLIs are POSIX shell scripts; the tests
+  that use them are skipped on Windows, so coverage there is lower.
 
 ## Further documentation
 

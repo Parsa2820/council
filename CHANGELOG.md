@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Unit tests for every package (99.7% statement coverage on Linux and
+  macOS), including fake `codex`, `claude`, `gemini` and `agy` CLIs that check
+  each preset's argument, stdin and output contract.
+- `make cover`, `make cover-html` and `make test-race`; CI reports coverage
+  per package in the job summary and fails below 90%.
+
+### Changed
+
+- `cmd/council`'s `main` is a thin wrapper around a testable `run` function.
+
 ### Fixed
 
 - `council ask` no longer exits 0 with an empty answer when no agent produced
