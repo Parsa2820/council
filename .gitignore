@@ -20,3 +20,8 @@ council-source.zip
 .vscode/
 *.swp
 .DS_Store
+
+# Optional browser check (scripts/webui-check.mjs)
+/node_modules/
+/package.json
+/package-lock.json
