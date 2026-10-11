@@ -72,16 +72,18 @@ in that round.
 Two answers are "the same" when their normalized forms are equal.
 `consensus.Normalize`:
 
-1. trims surrounding whitespace and lower-cases;
-2. strips every `"`, `'` and `` ` `` at the start and end;
-3. collapses every run of whitespace (including newlines) to one space;
-4. strips trailing `.`, `!`, `;` and `,`.
+1. lower-cases;
+2. collapses every run of whitespace (including newlines) to one space;
+3. strips every `"`, `'`, `` ` `` and space at the start and end, and every
+   trailing `.`, `!`, `;` and `,`, repeating until nothing changes (so
+   `"Paris".` and `'Paris.'` both become `paris`).
 
 | Answers | Same? |
 |---|---|
 | `42`, `42.`, ` 42`, `` `42` `` | yes |
 | `Hello   World.`, `hello world` | yes |
 | `"Use a Mutex!"`, `use a mutex` | yes |
+| `"Paris".`, `Paris` | yes |
 | `42`, `forty-two` | **no** |
 | `Use sync.Mutex`, `Use a sync.Mutex` | **no** |
 | `yes`, `Yes?` | **no** (`?` is not stripped) |

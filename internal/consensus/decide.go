@@ -34,12 +34,19 @@ type Decision struct {
 
 // Normalize canonicalises an answer for comparison: case-folded, whitespace
 // collapsed, surrounding quotes/backticks and trailing punctuation removed.
+// Quotes and punctuation are stripped repeatedly, so `"Paris".` and
+// `'Paris.'` both normalize to `paris`.
 func Normalize(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.Trim(s, "\"'`")
+	s = strings.ToLower(s)
 	s = strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " ")
-	s = strings.TrimRightFunc(s, func(r rune) bool { return r == '.' || r == '!' || r == ';' || r == ',' })
-	return strings.TrimSpace(s)
+	for {
+		prev := s
+		s = strings.Trim(s, "\"'` ")
+		s = strings.TrimRightFunc(s, func(r rune) bool { return r == '.' || r == '!' || r == ';' || r == ',' })
+		if s == prev {
+			return s
+		}
+	}
 }
 
 // Agreement reports whether the ballots constitute consensus: every ballot

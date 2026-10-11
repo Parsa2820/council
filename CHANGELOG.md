@@ -13,6 +13,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   a vote block and the moderator failed; it now reports an error.
 - Truncated text (`max_transcript_chars`, error excerpts, `doctor` details)
   no longer cuts a multi-byte UTF-8 character in half.
+- Answer normalization strips quotes and trailing punctuation in any order,
+  so `"Paris".` now matches `Paris`.
 
 ## [0.1.0] - 2026-10-10
 

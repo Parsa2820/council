@@ -70,6 +70,12 @@ func TestNormalize(t *testing.T) {
 		"  Hello   World. ": "hello world",
 		"`42`":              "42",
 		"\"Use a Mutex!\"":  "use a mutex",
+		"\"Paris\".":        "paris",
+		"'Paris.'":          "paris",
+		"` 42 `!":           "42",
+		"\"\"":              "",
+		"yes?":              "yes?",
+		"**42**":            "**42**",
 	}
 	for in, want := range cases {
 		if got := Normalize(in); got != want {
