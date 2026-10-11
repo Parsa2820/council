@@ -158,10 +158,7 @@ func (h *CommandHarness) Run(ctx context.Context, prompt string) (string, error)
 
 	cmd := exec.CommandContext(ctx, h.spec.Command, h.BuildArgs(prompt, promptFile, outputFile)...)
 	cmd.Dir = h.spec.Dir
-	cmd.Env = os.Environ()
-	for k, v := range h.spec.Env {
-		cmd.Env = append(cmd.Env, k+"="+os.ExpandEnv(v))
-	}
+	cmd.Env = h.environ()
 	if h.spec.PromptMode == PromptStdin {
 		cmd.Stdin = strings.NewReader(h.stdinPayload(prompt))
 	}
@@ -190,7 +187,9 @@ func (h *CommandHarness) Run(ctx context.Context, prompt string) (string, error)
 	answer, parseErr := h.parse(raw)
 	if runErr != nil {
 		msg := tail(strings.TrimSpace(stderr.String()), 800)
-		if parseErr != nil && !errors.Is(parseErr, errNoAnswer) {
+		// A parse error says something only if the CLI printed anything;
+		// "unexpected end of JSON input" would hide the real message.
+		if parseErr != nil && !errors.Is(parseErr, errNoAnswer) && len(bytes.TrimSpace(raw)) > 0 {
 			msg = parseErr.Error() + "; " + msg
 		}
 		if msg == "" {
@@ -316,4 +315,14 @@ func sanitize(s string) string {
 		}
 		return '_'
 	}, s)
+}
+
+// environ is council's environment plus the agent's env (with $VARS
+// expanded), for runs and for status checks alike.
+func (h *CommandHarness) environ() []string {
+	env := os.Environ()
+	for k, v := range h.spec.Env {
+		env = append(env, k+"="+os.ExpandEnv(v))
+	}
+	return env
 }

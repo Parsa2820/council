@@ -51,6 +51,9 @@ func (h *CommandHarness) runQuiet(ctx context.Context, d time.Duration, args ...
 	ctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, h.spec.Command, args...)
+	// The agent's env and workdir apply to status checks too, so a key set
+	// under `env:` (CURSOR_API_KEY, GEMINI_API_KEY, ...) counts.
+	cmd.Dir, cmd.Env = h.spec.Dir, h.environ()
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	configureProcess(cmd)

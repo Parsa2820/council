@@ -170,7 +170,7 @@ func TestPresetRunFailures(t *testing.T) {
 		{KindOpenCode, "notext", []string{"no answer in output"}},
 		{KindOpenCode, "fail", []string{"exit status 1", "Model not found"}},
 		{KindCursor, "is_error", []string{"harness reported error: usage limit reached"}},
-		{KindCursor, "noauth", []string{"cursor-agent exited: exit status 1", "Error: Authentication required. Please run 'agent login' first"}},
+		{KindCursor, "noauth", []string{"cursor-agent exited: exit status 1: Error: Authentication required. Please run 'agent login' first"}},
 		{KindCursor, "fail", []string{"exit status 1", "model 'nope' is not available"}},
 		{KindCursor, "malformed", []string{"output is not valid JSON"}},
 		{KindCursor, "empty", []string{"no answer in output"}},
@@ -496,5 +496,30 @@ func TestPiStatus(t *testing.T) {
 		if got, detail := piStatus(c.out, c.err); got != c.want || detail != c.detail {
 			t.Errorf("%s: got %s %q", c.name, got, detail)
 		}
+	}
+}
+
+// TestStatusUsesAgentEnvAndDir: a key set under the agent's env counts for
+// the status check, as it does for runs.
+func TestStatusUsesAgentEnvAndDir(t *testing.T) {
+	fakeCLIs(t)
+	t.Setenv("FAKE_AUTH", "key")
+	t.Setenv("CURSOR_API_KEY", "")
+	if st := presetHarness(t, KindCursor, nil).Check(context.Background()); st.Auth != AuthMissing {
+		t.Fatalf("without a key: %+v", st)
+	}
+	t.Setenv("MY_CURSOR_KEY", "valid")
+	st := presetHarness(t, KindCursor, func(sp *Spec) { sp.Env = map[string]string{"CURSOR_API_KEY": "$MY_CURSOR_KEY"} }).Check(context.Background())
+	if st.Auth != AuthOK {
+		t.Fatalf("with the key in the agent env: %+v", st)
+	}
+	dir := t.TempDir()
+	h, err := New("pwd", Spec{Command: script(t, `pwd`), StatusArgs: []string{"x"}, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := h.runQuiet(context.Background(), 5*time.Second)
+	if real, _ := filepath.EvalSymlinks(dir); got != dir && got != real {
+		t.Errorf("status ran in %q, want %q", got, dir)
 	}
 }
