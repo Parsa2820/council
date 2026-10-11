@@ -1,19 +1,42 @@
 name: Release
 
-# Push a tag such as v0.1.0 to build the binaries and publish a GitHub release.
+# Builds the binaries and publishes a GitHub release with them and SHA256SUMS.
+# Runs when a tag such as v0.1.1 is pushed, or by hand from the Actions tab
+# (or `gh workflow run release.yml -f tag=v0.1.1`) for an existing tag.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: check tag name
+        shell: bash
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a release tag like v1.2.3"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ env.TAG }}
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -21,24 +44,33 @@ jobs:
           go-version-file: go.mod
 
       - name: vet and test
+        shell: bash
         run: |
           go vet ./...
-          go test ./...
+          go test -count=1 ./...
 
       - name: build binaries
-        run: VERSION="${GITHUB_REF_NAME}" ./scripts/build.sh
+        shell: bash
+        run: VERSION="$TAG" ./scripts/build.sh
 
       - name: check version stamp
+        shell: bash
         run: |
           got=$(./dist/council-linux-amd64 version)
           echo "$got"
-          [ "$got" = "council ${GITHUB_REF_NAME}" ]
+          [ "$got" = "council $TAG" ]
 
       - name: publish release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --verify-tag \
-            --title "council ${GITHUB_REF_NAME}" \
-            --generate-notes
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists; replacing its assets"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --verify-tag \
+              --title "council $TAG" \
+              --generate-notes
+          fi

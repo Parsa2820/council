@@ -246,4 +246,10 @@ so generic harnesses can use it too. Do not special-case one CLI in `Run`.
    comes from the tag) and `../council-source.zip`.
 4. Pushing the tag (`git push origin v0.2.0`) runs
    `.github/workflows/release.yml`, which builds the same binaries and
-   attaches them, with `SHA256SUMS`, to a GitHub release.
+   attaches them, with `SHA256SUMS`, to a GitHub release. Push the tag on
+   its own, after `main` (not in the same push that creates the repository
+   or adds the workflow), so GitHub delivers a tag push event.
+5. If no release run appears, start it by hand for the existing tag:
+   `gh workflow run release.yml -f tag=v0.2.0` (or **Run workflow** on the
+   Release workflow in the Actions tab). Re-running it for a tag that already
+   has a release replaces the release's assets.
