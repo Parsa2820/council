@@ -1,0 +1,44 @@
+name: Release
+
+# Push a tag such as v0.1.0 to build the binaries and publish a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: vet and test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: build binaries
+        run: VERSION="${GITHUB_REF_NAME}" ./scripts/build.sh
+
+      - name: check version stamp
+        run: |
+          got=$(./dist/council-linux-amd64 version)
+          echo "$got"
+          [ "$got" = "council ${GITHUB_REF_NAME}" ]
+
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --verify-tag \
+            --title "council ${GITHUB_REF_NAME}" \
+            --generate-notes
