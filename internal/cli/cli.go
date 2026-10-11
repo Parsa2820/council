@@ -54,7 +54,12 @@ Run "council <command> -h" for command flags.
 func Main(args []string, env Env) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	err := run(ctx, args, env)
+	return exitFor(run(ctx, args, env), env)
+}
+
+// exitFor maps a command's error to the process exit status, printing it to
+// stderr unless it is -h or an explicit exit code.
+func exitFor(err error, env Env) int {
 	if err == nil {
 		return 0
 	}
