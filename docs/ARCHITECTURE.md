@@ -18,6 +18,7 @@ internal/harness/     Harness interface; CommandHarness subprocess runner; built
                       doctor checks; JSON path lookup; Func (in-process harness)
 internal/chat/        Transcript, prompt construction, Council orchestrator, Markdown rendering
 internal/consensus/   vote parsing, answer normalization, agreement detection, majority vote
+internal/web/         `council serve`: HTTP API, SSE run streaming, embedded single-page UI
 examples/             fake-agent.sh + fake-council.yaml (demo and tests without real CLIs)
 scripts/build.sh      cross-compilation into dist/
 ```
@@ -30,6 +31,10 @@ flowchart LR
     cli --> config[internal/config]
     cli --> chat[internal/chat]
     cli --> harness[internal/harness]
+    cli --> web[internal/web]
+    web --> config
+    web --> chat
+    web --> harness
     config --> harness
     chat --> harness
     chat --> consensus[internal/consensus]
@@ -63,6 +68,27 @@ decides whether `council ask` without a prompt argument reads stdin. Tests call
 * `cmdDoctor`, `cmdLogin`, `cmdAgents` and `cmdInit` are thin wrappers around
   `harness.CommandHarness.Check`, `LoginCommand`, `BuildArgs` and
   `config.WriteDefault`.
+
+### `internal/web`
+
+`council serve` (`cmdServe`) builds a `web.Server`, an `http.Handler`, and
+serves it until the context is cancelled. The handler:
+
+* serves `static/` (embedded with `go:embed`); `index.html` is a template
+  that receives the per-process CSRF token;
+* checks every request's `Host` and every `POST`'s `Sec-Fetch-Site`,
+  `Origin`, content type and token before routing;
+* `GET /api/agents` loads the config and runs each harness's `Check`
+  concurrently;
+* `POST /api/run` validates a `RunRequest`, turns it into harnesses and
+  `chat.Options` (as `cmdAsk` does), takes a slot from a semaphore channel,
+  and runs `chat.Council.Run` in a goroutine under the request's context. The
+  `OnEvent` hook forwards events through a channel to the handler, which
+  writes them as Server-Sent Events. A client disconnect or
+  `POST /api/runs/{id}/cancel` cancels the context, which kills the agents'
+  processes.
+
+See [WEB_UI.md](WEB_UI.md) for the event format.
 
 ### `internal/config`
 

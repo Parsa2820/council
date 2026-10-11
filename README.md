@@ -32,6 +32,7 @@ Final answer: Usually yes for read-heavy workloads with long critical sections, 
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Signing in to each harness](#signing-in-to-each-harness)
+- [Web UI](#web-ui)
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
 - [How consensus works](#how-consensus-works)
@@ -299,6 +300,36 @@ An `unknown` auth state is not an error. Use `council doctor --probe` for a
 definite answer: a successful probe upgrades `unknown` to `ok`, and a failed
 probe marks the agent `missing`.
 
+## Web UI
+
+![council web UI](docs/images/web-ui.png)
+
+```sh
+council serve --open        # http://127.0.0.1:8787/ in your browser
+```
+
+`council serve` runs a small web page for the council: type a prompt, tick
+the agents (each shows whether it is installed and signed in, like
+`council doctor`), set the rounds, moderator and timeout, and press **Run**.
+The group chat streams in round by round, with each agent's vote and
+confidence, and ends with a consensus card showing the answer, the method and
+who agreed or dissented. You can cancel a run and download the transcript as
+Markdown. The page follows the system's light or dark theme.
+
+It is one binary with the page embedded: no Node, no build step, nothing
+loaded from the internet. Try it with the fake agents:
+
+```sh
+council serve --config examples/fake-council.yaml --open
+```
+
+The server listens on `127.0.0.1` only and accepts requests only from its own
+page (a loopback `Host`, same-origin JSON requests and a per-process token),
+because the agents run with your credentials. `--addr 0.0.0.0:8787` exposes
+it to the network with a warning; there is no login, so don't do that on an
+untrusted network. See [docs/WEB_UI.md](docs/WEB_UI.md) for the flags, the
+security model and the HTTP API it uses.
+
 ## Command reference
 
 ```
@@ -307,6 +338,7 @@ council init [--force]             write a default config to ~/.config/council/c
 council doctor [--probe] [agents]  check each harness is installed and signed in (alias: status)
 council login <agent> [-- args]    run the harness CLI's own login flow
 council agents                     list configured agents and how they are invoked
+council serve [--addr] [--open]    start the local web UI (default http://127.0.0.1:8787)
 council version
 ```
 
@@ -426,6 +458,17 @@ claude  claude       stdin   json:result            claude -p --output-format js
 codex   codex        stdin   text (file)            codex exec --skip-git-repo-check --ephemeral --sandbox read-only --color never --output-last-message <output_file> -
 gemini  gemini       stdin   json:response          gemini --output-format json -p Respond to the request above (provided on standard input).
 ```
+
+### `council serve`
+
+```
+council serve [--addr 127.0.0.1:8787] [--open] [--config path] [--max-runs 2]
+```
+
+Starts the [web UI](#web-ui). `--open` opens it in the default browser,
+`--max-runs` limits concurrent runs, and the config is re-read on every
+request. Ctrl-C stops the server and cancels running discussions. See
+[docs/WEB_UI.md](docs/WEB_UI.md).
 
 ### `council version`
 
@@ -663,6 +706,8 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
 * On Windows a timeout kills the CLI process but not its children.
 * `--timeout` can shorten turns but not extend them past an agent's `timeout`.
 * There is no memory between `council ask` runs.
+* The web UI has no login or TLS and keeps no history; it is meant for one
+  person on one machine.
 * The Go packages live under `internal/`, so other modules cannot import them.
 * The fake agent and the fake harness CLIs are POSIX shell scripts; the tests
   that use them are skipped on Windows, so coverage there is lower.
@@ -675,6 +720,8 @@ to see a moderator synthesis, or `--rounds 1` to see a majority vote.
   and auth, and how to add a custom harness.
 * [docs/CONFIGURATION.md](docs/CONFIGURATION.md): every config key, defaults,
   override rules and validation.
+* [docs/WEB_UI.md](docs/WEB_UI.md): `council serve`, its security model and
+  HTTP API.
 * [docs/CONSENSUS.md](docs/CONSENSUS.md): the consensus algorithm,
   normalization, tie-breaks and moderator fallback, with an example transcript.
 * [CONTRIBUTING.md](CONTRIBUTING.md): development setup, tests, adding a

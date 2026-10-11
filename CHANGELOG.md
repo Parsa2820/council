@@ -7,6 +7,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- `council serve`: a local web UI. Type a prompt, pick agents (with the
+  same installed and signed-in status as `council doctor`), set rounds,
+  moderator and timeout, and watch the group chat stream in round by round
+  with each agent's vote, then a consensus card with the answer, method,
+  supporters and dissenters. Runs can be cancelled and their transcript
+  downloaded as Markdown. The page follows the system's light or dark theme
+  and is embedded in the binary (plain HTML, CSS and JavaScript, standard
+  library only). Flags: `--addr` (default `127.0.0.1:8787`), `--open`,
+  `--config`, `--max-runs`. See [docs/WEB_UI.md](docs/WEB_UI.md).
+- An HTTP API behind the UI: `GET /api/agents`, `POST /api/run` (a
+  Server-Sent Events stream of chat events, the result and the transcript)
+  and `POST /api/runs/{id}/cancel`.
+- `examples/fake-council.yaml` gives the fake agents a status command, so
+  `council doctor` and the web UI show them as signed in.
+
+### Security
+
+- The web server listens on loopback by default and warns when bound to
+  another address. It rejects non-loopback `Host` headers (DNS rebinding),
+  cross-site and cross-origin `POST`s, non-JSON bodies and requests without
+  the per-process token, and sends a strict Content-Security-Policy.
+  Closing the browser tab cancels the run and kills the agents' processes.
+
 ## [0.1.1] - 2026-10-10
 
 ### Added
