@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +21,7 @@ import (
 	"github.com/Parsa2820/council/internal/chat"
 	"github.com/Parsa2820/council/internal/config"
 	"github.com/Parsa2820/council/internal/harness"
+	"github.com/Parsa2820/council/internal/web"
 )
 
 // Version is set at build time with -ldflags "-X github.com/Parsa2820/council/internal/cli.Version=...".
@@ -45,6 +48,7 @@ Usage:
   council doctor [--probe] [agents]  check each harness is installed and signed in (alias: status)
   council login <agent> [-- args]    run the harness CLI's own login flow
   council agents                     list configured agents and how they are invoked
+  council serve [--addr] [--open]    start the local web UI (default http://127.0.0.1:8787)
   council version
 
 Run "council <command> -h" for command flags.
@@ -99,6 +103,8 @@ func run(ctx context.Context, args []string, env Env) error {
 		return cmdLogin(ctx, rest, env)
 	case "agents":
 		return cmdAgents(rest, env)
+	case "serve":
+		return cmdServe(ctx, rest, env)
 	case "version", "--version", "-v":
 		fmt.Fprintln(env.Stdout, "council", Version)
 		return nil
@@ -572,4 +578,83 @@ func cmdAgents(args []string, env Env) error {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", n, sp.Kind, sp.PromptMode, out, line)
 	}
 	return tw.Flush()
+}
+
+// ---- serve ------------------------------------------------------------------
+
+// openBrowser and listen are replaced in tests.
+var (
+	openBrowser = web.OpenBrowser
+	listen      = net.Listen
+)
+
+func cmdServe(ctx context.Context, args []string, env Env) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs.SetOutput(env.Stderr)
+	cfgPath := fs.String("config", "", "config file (re-read on every request)")
+	addr := fs.String("addr", "127.0.0.1:8787", "address to listen on; keep it on localhost unless you know why")
+	open := fs.Bool("open", false, "open the UI in the default browser")
+	maxRuns := fs.Int("max-runs", 2, "maximum number of runs at the same time")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) > 0 {
+		return errUsage{fmt.Sprintf("serve takes no arguments (got %q)", pos)}
+	}
+	if *maxRuns < 1 {
+		return errUsage{"--max-runs must be at least 1"}
+	}
+	path := *cfgPath
+	if path == "" {
+		path = config.DefaultPath()
+	}
+	if _, err := config.Load(path); err != nil {
+		return err
+	}
+	loopback := web.IsLoopbackHost(*addr)
+	srv, err := web.New(web.Options{
+		LoadConfig:   func() (*config.Config, error) { return config.Load(path) },
+		MaxRuns:      *maxRuns,
+		AllowAnyHost: !loopback,
+		Version:      Version,
+	})
+	if err != nil {
+		return err
+	}
+	ln, err := listen("tcp", *addr)
+	if err != nil {
+		return err
+	}
+	url := "http://" + ln.Addr().String() + "/"
+	if loopback && strings.HasPrefix(*addr, "localhost:") {
+		url = "http://localhost:" + portOf(ln.Addr().String()) + "/"
+	}
+	if !loopback {
+		fmt.Fprintf(env.Stderr, "WARNING: listening on %s, which is reachable from other machines. Anyone who can reach it can run your agents with your credentials. Use --addr 127.0.0.1:8787 unless you put an authenticating proxy in front.\n", ln.Addr())
+	}
+	fmt.Fprintf(env.Stderr, "council web UI on %s (config %s); press Ctrl-C to stop\n", url, path)
+	if *open {
+		if err := openBrowser(url); err != nil {
+			fmt.Fprintln(env.Stderr, "council: could not open a browser:", err)
+		}
+	}
+	hs := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	errc := make(chan error, 1)
+	go func() { errc <- hs.Serve(ln) }()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = hs.Shutdown(sctx) // runs are cancelled through BaseContext
+	fmt.Fprintln(env.Stderr, "council web UI stopped")
+	return nil
+}
+
+func portOf(hostport string) string {
+	_, p, _ := net.SplitHostPort(hostport)
+	return p
 }
