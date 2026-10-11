@@ -805,3 +805,31 @@ func TestStatusTimeoutIsNotCached(t *testing.T) {
 		t.Errorf("a status check cut short by the timeout was cached (%d entries, ran %q)", n, b)
 	}
 }
+
+// TestDefaultConfigAgentList: with the built-in config (no config file), the
+// page lists every built-in harness, Cursor among the defaults and pi off.
+func TestDefaultConfigAgentList(t *testing.T) {
+	_, ts := newServer(t, Options{LoadConfig: func() (*config.Config, error) { return config.Default(), nil }})
+	res, err := ts.Client().Get(ts.URL + "/api/agents?status=0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body AgentsResponse
+	json.NewDecoder(res.Body).Decode(&body)
+	res.Body.Close()
+	var order []string
+	got := map[string]AgentInfo{}
+	for _, a := range body.Agents {
+		order = append(order, a.Agent)
+		got[a.Agent] = a
+	}
+	if strings.Join(order, ",") != "agy,claude,codex,cursor,opencode,pi" { // defaults first, each group sorted
+		t.Fatalf("agents %v", order)
+	}
+	if a := got["cursor"]; !a.Default || a.Kind != "cursor" || a.Command != "cursor-agent" {
+		t.Errorf("cursor %+v", a)
+	}
+	if a := got["pi"]; a.Default || a.Kind != "pi" || a.Command != "pi" {
+		t.Errorf("pi %+v", a)
+	}
+}

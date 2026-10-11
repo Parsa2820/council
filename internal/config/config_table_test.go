@@ -117,7 +117,7 @@ func TestLoadErrors(t *testing.T) {
 	}
 	missing := filepath.Join(d, "missing.yaml")
 	c, err = Load(missing)
-	if err != nil || c.Path() != missing || !reflect.DeepEqual(c.Defaults.Agents, []string{"codex", "claude", "agy"}) {
+	if err != nil || c.Path() != missing || !reflect.DeepEqual(c.Defaults.Agents, []string{"codex", "claude", "agy", "cursor"}) {
 		t.Fatalf("missing file should load defaults: %+v %v", c, err)
 	}
 }
@@ -253,6 +253,9 @@ agents:
 		{"agy", func(s harness.Spec) bool { return s.Kind == harness.KindAntigravity && s.Command == "agy" }},
 		{"opencode", func(s harness.Spec) bool { return s.Kind == harness.KindOpenCode && s.Command == "opencode" }},
 		{"claude-code", func(s harness.Spec) bool { return s.Kind == harness.KindClaude }},
+		{"cursor-agent", func(s harness.Spec) bool { return s.Kind == harness.KindCursor && s.Command == "cursor-agent" }},
+		{"cursor-cli", func(s harness.Spec) bool { return s.Kind == harness.KindCursor }},
+		{"pi", func(s harness.Spec) bool { return s.Kind == harness.KindPi && s.Command == "pi" }},
 	}
 	for _, tc := range cases {
 		sp, err := c.Spec(tc.name)
@@ -337,7 +340,7 @@ func TestDefaultYAMLRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.AgentNames(), []string{"agy", "claude", "codex", "opencode"}) {
+	if !reflect.DeepEqual(c.AgentNames(), []string{"agy", "claude", "codex", "cursor", "opencode", "pi"}) {
 		t.Errorf("default agents: %q", c.AgentNames())
 	}
 	if d := Default(); !reflect.DeepEqual(d.Defaults, c.Defaults) || d.Path() != "" {

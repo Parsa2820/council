@@ -9,7 +9,7 @@ const DefaultYAML = `# council configuration
 
 defaults:
   # Agents used by "council ask" when --agents is not given.
-  agents: [codex, claude, agy]
+  agents: [codex, claude, agy, cursor]
   # Maximum discussion rounds (round 1 = independent answers).
   rounds: 3
   # "majority" for a plain vote, or the name of an agent to act as moderator.
@@ -37,6 +37,12 @@ agents:
   opencode:
     harness: opencode       # opencode run --format json --agent plan  (prompt on stdin)
     # model: anthropic/claude-sonnet-4-5   (provider/model, see "opencode models")
+  cursor:
+    harness: cursor         # cursor-agent -p --output-format json --mode ask --trust  (prompt on stdin)
+    # model: sonnet-4.5     (see "cursor-agent models")
+  pi:
+    harness: pi             # pi -p --no-session --tools read,grep,find,ls --no-mcp  (prompt on stdin)
+    # model: anthropic/claude-sonnet-4-5   (pattern or provider/id, see "pi --list-models")
 
   # Generic harness example: any CLI that reads a prompt and prints an answer.
   # ollama:

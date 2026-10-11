@@ -62,8 +62,8 @@ type Defaults struct {
 }
 
 // Agent configures one participant. Harness selects a built-in preset
-// (codex, claude, antigravity/agy, opencode) or "generic"; every other field
-// overrides the preset.
+// (codex, claude, antigravity/agy, opencode, cursor, pi) or "generic"; every
+// other field overrides the preset.
 type Agent struct {
 	Harness       string            `yaml:"harness"`
 	Command       string            `yaml:"command,omitempty"`
@@ -175,7 +175,7 @@ func (c *Config) applyDefaults() {
 		c.Defaults.RequireExplicitAgreement = &t
 	}
 	if len(c.Defaults.Agents) == 0 {
-		c.Defaults.Agents = []string{"codex", "claude", "agy"}
+		c.Defaults.Agents = []string{"codex", "claude", "agy", "cursor"}
 	}
 }
 
@@ -209,7 +209,8 @@ func (c *Config) AgentNames() []string {
 
 // Spec resolves an agent name to a harness Spec. Names that are not defined
 // in the config but match a built-in harness kind (codex, claude,
-// antigravity, agy, opencode) resolve to that preset.
+// antigravity, agy, opencode, cursor, pi and their aliases) resolve to that
+// preset.
 func (c *Config) Spec(name string) (harness.Spec, error) {
 	a, ok := c.Agents[name]
 	if !ok {

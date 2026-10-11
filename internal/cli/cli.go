@@ -170,7 +170,7 @@ func cmdAsk(ctx context.Context, args []string, env Env) error {
 	fs.SetOutput(env.Stderr)
 	var (
 		cfgPath    = fs.String("config", "", "config file (default ~/.config/council/config.yaml)")
-		agentsFlag = fs.String("agents", "", "comma-separated agents (default from config, e.g. codex,claude,agy)")
+		agentsFlag = fs.String("agents", "", "comma-separated agents (default from config, e.g. codex,claude,cursor)")
 		rounds     = fs.Int("rounds", 0, "maximum discussion rounds (default from config)")
 		moderator  = fs.String("moderator", "", `agent that synthesizes the final answer, or "majority"`)
 		file       = fs.String("file", "", "read the prompt (or extra context) from this file")
