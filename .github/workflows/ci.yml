@@ -40,13 +40,51 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # Tests that need /bin/sh skip themselves on Windows.
+      # Tests that need /bin/sh (the fake codex/claude/gemini/agy CLIs in
+      # internal/harness/testdata/fakecli and examples/fake-agent.sh) skip
+      # themselves on Windows.
       - name: go test
-        run: go test ./...
+        shell: bash
+        run: go test -count=1 ./...
 
-      - name: go test -race
+      - name: go test -race with coverage
         if: runner.os != 'Windows'
-        run: go test -race ./...
+        shell: bash
+        run: go test -race -count=1 -covermode=atomic -coverprofile=cover.out ./... | tee test-output.txt
+
+      - name: go test with coverage
+        if: runner.os == 'Windows'
+        shell: bash
+        run: go test -count=1 -covermode=atomic -coverprofile=cover.out ./... | tee test-output.txt
+
+      - name: coverage summary
+        shell: bash
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {print $NF}')
+          echo "total coverage on ${RUNNER_OS}: ${total}"
+          {
+            echo "### Coverage on ${RUNNER_OS}: ${total}"
+            echo
+            echo "| Package | Coverage |"
+            echo "|---|---|"
+            awk '/^ok/ { for (i = 1; i <= NF; i++) if ($i == "coverage:") print "| `" $2 "` | " $(i+1) " |" }' test-output.txt
+            echo
+            echo "<details><summary>Per function</summary>"
+            echo
+            echo '```'
+            go tool cover -func=cover.out
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Windows skips the shell-script tests, so only Linux and macOS
+      # enforce the threshold.
+      - name: coverage threshold (90%)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')
+          awk -v t="$total" 'BEGIN { if (t + 0 < 90) { printf "total coverage %s%% is below 90%%\n", t; exit 1 } }'
 
   cross-build:
     name: cross-compile release targets
